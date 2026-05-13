@@ -1,87 +1,90 @@
 import sqlite3
 
-conn = sqlite3.connect("database/modules.db")
+DB_PATH = "database/modules.db"
 
-cursor = conn.cursor()
+#to be called once at main.py startup
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS module_scores (
+            module_code TEXT PRIMARY KEY,
+            title TEXT,
+            description TEXT,
+            module_credits INTEGER,
+            department TEXT,
+            difficulty_score REAL,
+            recommend_score REAL,
+            top_positive_comment_message TEXT,
+            top_positive_comment_likes INTEGER,
+            top_neutral_comment_message TEXT,
+            top_neutral_comment_likes INTEGER,
+            top_negative_comment_message TEXT,
+            top_negative_comment_likes INTEGER,
+            comment_count INTEGER,
+            expected_gpa REAL,
+            actual_gpa REAL
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS module_scores (
-    module_code TEXT PRIMARY KEY,
-    difficulty_score REAL,
-    recommend_score REAL,
-    top_positive_comment_message TEXT,
-    top_positive_comment_likes INTEGER,
-    top_neutral_comment_message TEXT,
-    top_neutral_comment_likes INTEGER,
-    top_negative_comment_message TEXT,
-    top_negative_comment_likes INTEGER,
-    comment_count INTEGER
-)
-""")
+def get_connection():
+    return sqlite3.connect(DB_PATH)
 
-conn.commit()
-
-
-# GET MODULE FROM DB IF EXISTS
-def get_cached_module(module_code: str):
-
-    module_code = module_code.upper() 
-
-    cursor.execute(
-        """
-        SELECT
-            module_code,
-            difficulty_score,
-            recommend_score,
-            top_positive_comment_message,
-            top_positive_comment_likes,
-            top_neutral_comment_message,
-            top_neutral_comment_likes,
-            top_negative_comment_message,
-            top_negative_comment_likes,
-            comment_count
-        FROM module_scores
-        WHERE module_code = ?
-        """,
-        (module_code,)
-    )
+def get_cached_module(module_code: str, conn: sqlite3.Connection):
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM module_scores WHERE module_code = ?
+    """, (module_code.upper(),))
 
     row = cursor.fetchone()
-
-    # No cached result found
     if row is None:
         return None
 
-    # Convert SQL row into Python dictionary
     return {
         "module_code": row[0],
-        "difficulty_score": row[1],
-        "recommend_score": row[2],
-        "top_positive_comment_message": row[3],
-        "top_positive_comment_likes": row[4],
-        "top_neutral_comment_message": row[5],
-        "top_neutral_comment_likes": row[6],
-        "top_negative_comment_message": row[7],
-        "top_negative_comment_likes": row[8],
-        "comment_count": row[9]
+        "title": row[1],
+        "description": row[2],
+        "module_credits": row[3],
+        "department": row[4],
+        "difficulty_score": row[5],
+        "recommend_score": row[6],
+        "top_positive_comment_message": row[7],
+        "top_positive_comment_likes": row[8],
+        "top_neutral_comment_message": row[9],
+        "top_neutral_comment_likes": row[10],
+        "top_negative_comment_message": row[11],
+        "top_negative_comment_likes": row[12],
+        "comment_count": row[13],
+        "expected_gpa": row[14],
+        "actual_gpa": row[15]
     }
 
-#save module scores to DB, even if it already exists
-#should not be called unless row doesnt exist anyway
 def save_module_data(
-    module_code,
-    difficulty_score,
-    recommend_score,
-    top_positive_comment,
-    top_neutral_comment,
-    top_negative_comment,
-    comment_count
+    module_code: str,
+    title: str,
+    description: str,
+    module_credits: int,
+    department: str,
+    difficulty_score: float,
+    recommend_score: float,
+    top_positive_comment: dict,
+    top_neutral_comment: dict,
+    top_negative_comment: dict,
+    comment_count: int,
+    expected_gpa: float,
+    actual_gpa: float,
+    conn: sqlite3.Connection
 ):
-    cursor.execute("""
+    conn.execute("""
         INSERT OR REPLACE INTO module_scores
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         module_code,
+        title,
+        description,
+        module_credits,
+        department,
         difficulty_score,
         recommend_score,
         top_positive_comment["message"],
@@ -90,7 +93,8 @@ def save_module_data(
         top_neutral_comment["likes"],
         top_negative_comment["message"],
         top_negative_comment["likes"],
-        comment_count  # Initialize comment_count to the provided value
+        comment_count,
+        expected_gpa,
+        actual_gpa
     ))
-
     conn.commit()

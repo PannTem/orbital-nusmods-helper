@@ -1,68 +1,91 @@
 import nlp
 import database_access
 import api
+import sqlite3
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+
+database_access.init_db()
 
 app = FastAPI()
+
+#function to always close connection after work is done
+def get_conn():
+    conn = database_access.get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 def return_formatter(module_code: str,
                      course_data: dict,
                      difficulty_score: float,
-                     recommendation_score: float,
-                     top_positive_comment_message: int,
+                     recommend_score: float,
+                     top_positive_comment_message: str,
                      top_positive_comment_likes: int,
-                     top_neutral_comment_message: int,
+                     top_neutral_comment_message: str,
                      top_neutral_comment_likes: int,
-                     top_negative_comment_message: int,
+                     top_negative_comment_message: str,
                      top_negative_comment_likes: int,
-                     comment_count: int):
+                     comment_count: int,
+                     expected_gpa: float,
+                     actual_gpa: float):
     return {
         "module": module_code,
         "title": course_data.get("title"),
         "description": course_data.get("description"),
-        "semesterData": course_data.get("semesterData", []),
+        "module_credits": course_data.get("moduleCredit"),
+        "department": course_data.get("department"),
         "difficulty_score": difficulty_score,
-        "recommendation_score": recommendation_score,
+        "recommend_score": recommend_score,
         "top_positive_comment_message": top_positive_comment_message if top_positive_comment_likes >= 0 else None,
         "top_positive_comment_likes": top_positive_comment_likes if top_positive_comment_likes >= 0 else None,
         "top_neutral_comment_message": top_neutral_comment_message if top_neutral_comment_likes >= 0 else None,
         "top_neutral_comment_likes": top_neutral_comment_likes if top_neutral_comment_likes >= 0 else None,
         "top_negative_comment_message": top_negative_comment_message if top_negative_comment_likes >= 0 else None,
         "top_negative_comment_likes": top_negative_comment_likes if top_negative_comment_likes >= 0 else None,
-        "comment_count": comment_count
+        "comment_count": comment_count,
+        "expected_gpa": expected_gpa,
+        "actual_gpa": actual_gpa
         }
 
 @app.get("/course/{module_code}")
-def get_course(module_code: str):
+def get_course(module_code: str, conn: sqlite3.Connection = Depends(get_conn)):
 
     module_code = module_code.upper() 
 
-    cached = database_access.get_cached_module(module_code)
-
-    #API Fetch
-    course_data = api.fetch_nusmods(module_code)
-
-    if course_data is None:
-        raise HTTPException(status_code=404, detail="Invalid module code")
+    cached = database_access.get_cached_module(module_code, conn)
 
     if cached:
         print("Using cached result...")
-        return return_formatter(module_code,
-                                course_data,
-                                cached["difficulty_score"],
-                                cached["recommend_score"],
-                                cached["top_positive_comment_message"],
-                                cached["top_positive_comment_likes"],
-                                cached["top_neutral_comment_message"],
-                                cached["top_neutral_comment_likes"],
-                                cached["top_negative_comment_message"],
-                                cached["top_negative_comment_likes"],
-                                cached["comment_count"])
+        return {
+            "module": module_code,
+            "title": cached["title"],
+            "description": cached["description"],
+            "module_credits": cached["module_credits"],
+            "department": cached["department"],
+            "difficulty_score": cached["difficulty_score"],
+            "recommend_score": cached["recommend_score"],
+            "top_positive_comment_message": cached["top_positive_comment_message"],
+            "top_positive_comment_likes": cached["top_positive_comment_likes"],
+            "top_neutral_comment_message": cached["top_neutral_comment_message"],
+            "top_neutral_comment_likes": cached["top_neutral_comment_likes"],
+            "top_negative_comment_message": cached["top_negative_comment_message"],
+            "top_negative_comment_likes": cached["top_negative_comment_likes"],
+            "comment_count": cached["comment_count"],
+            "expected_gpa": cached["expected_gpa"],
+            "actual_gpa": cached["actual_gpa"]
+        }
     
     #-------------------------------------------------------------------------------------
 
     #Data is not yet cached. Fetch from API, throw it thru NLP pipeline, then store in DB
+
+    #nusmods API Fetch
+    course_data = api.fetch_nusmods(module_code)
+
+    if course_data is None:
+        raise HTTPException(status_code=404, detail="Invalid module code")
 
     #Disqus Fetch
     thread_id = api.get_disqus_thread_id(module_code)
@@ -103,41 +126,164 @@ def get_course(module_code: str):
     top_comments = top_comments[:30]  # Only analyze top 30 comments because BART is computationally expensive
     if top_comments:
         difficulty_score = 0.0
-        recommendation_score = 0.0
+        recommend_score = 0.0
         for comment in top_comments:
-            result = nlp.analyze_diff_recc(comment["message"])
+            result = nlp.analyze_diff_recc(comment)
             difficulty_score += float(result["difficulty_score"])
-            recommendation_score += float(result["recommendation_score"])
+            recommend_score += float(result["recommend_score"])
         difficulty_score /= len(top_comments)
-        recommendation_score /= len(top_comments)
+        recommend_score /= len(top_comments)
     else:
         difficulty_score = None
-        recommendation_score = None
+        recommend_score = None
+
+    #---------------------------------------------------------------------------------------
+    # GRADE ANALYSIS
+    #---------------------------------------------------------------------------------------
+    total_expected_gpa = 0.0
+    total_expected_gpa_count = 0
+    for comment in comments:
+        expected_gpa = nlp.extract_expected_gpa(comment)
+        if expected_gpa is not None: #gpa = 0.0 is somehow still valid
+            total_expected_gpa += expected_gpa
+            total_expected_gpa_count += 1
+    expected_gpa = total_expected_gpa / total_expected_gpa_count if total_expected_gpa_count > 0 else None
+
+    total_actual_gpa = 0.0
+    total_actual_gpa_count = 0
+    for comment in comments:
+        actual_gpa = nlp.extract_actual_gpa(comment)
+        if actual_gpa is not None: #gpa = 0.0 is valid
+            total_actual_gpa += actual_gpa
+            total_actual_gpa_count += 1
+    actual_gpa = total_actual_gpa / total_actual_gpa_count if total_actual_gpa_count > 0 else None
 
     #---------------------------------------------------------------------------------------
     #SAVE TO DB
     #---------------------------------------------------------------------------------------
     database_access.save_module_data(
         module_code,
+        course_data.get("title"),
+        course_data.get("description"),
+        course_data.get("moduleCredit"),
+        course_data.get("department"),
         difficulty_score,
-        recommendation_score,
+        recommend_score,
         curr_max_positive_comment,
         curr_max_neutral_comment,
         curr_max_negative_comment,
-        len(comments)
+        len(comments),
+        expected_gpa,
+        actual_gpa,
+        conn
     )
 
     #Return as python dictionary object
     return return_formatter(module_code,
                             course_data,
                             difficulty_score,
-                            recommendation_score,
+                            recommend_score,
                             curr_max_positive_comment["message"],
                             curr_max_positive_comment["likes"],
                             curr_max_neutral_comment["message"],
                             curr_max_neutral_comment["likes"],
                             curr_max_negative_comment["message"],
                             curr_max_negative_comment["likes"],
-                            len(comments))
+                            len(comments),
+                            expected_gpa,
+                            actual_gpa
+                            )
 
-print(get_course("CS2040S"))
+
+
+#----------------------------
+#From below onwards
+# functions only work with courses that have already been cached in DB (courses which have been looked up at least once)
+
+
+
+#list top 30 courses with lowest difficulty, subject to minimum number of comments threshold
+@app.get("/difficulty/{comment_count}")
+def get_lowest_difficulty_courses(comment_count: int, conn: sqlite3.Connection = Depends(get_conn)):
+
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            module_code,
+            title,
+            difficulty_score,
+            recommend_score,
+            comment_count
+        FROM module_scores
+        WHERE
+            difficulty_score IS NOT NULL
+            AND comment_count >= ?
+        ORDER BY difficulty_score ASC
+        LIMIT 30
+    """, (comment_count,))
+
+    rows = cursor.fetchall()
+
+    results = []
+
+    for row in rows:
+        results.append({
+            "module_code": row[0],
+            "title": row[1],
+            "difficulty_score": row[2],
+            "recommendation_score": row[3],
+            "comment_count": row[4]
+        })
+
+    return results
+
+
+#list top 30 courses with highest recommendation score, subject to minimum number of comments threshold
+@app.get("/recommendation/{comment_count}")
+def get_highest_recommend_courses(comment_count: int, conn: sqlite3.Connection = Depends(get_conn)):
+
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            module_code,
+            title,
+            difficulty_score,
+            recommend_score,
+            comment_count
+        FROM module_scores
+        WHERE
+            recommend_score IS NOT NULL
+            AND comment_count >= ?
+        ORDER BY recommend_score DESC
+        LIMIT 30
+    """, (comment_count,))
+
+    rows = cursor.fetchall()
+
+    results = []
+
+    for row in rows:
+        results.append({
+            "module_code": row[0],
+            "title": row[1],
+            "difficulty_score": row[2],
+            "recommendation_score": row[3],
+            "comment_count": row[4]
+        })
+
+    return results
+
+
+if __name__ == "__main__":
+
+    conn = database_access.get_connection()
+
+    try:
+        result = get_course("CS2040S", conn)
+
+        print(result)
+
+    finally:
+        conn.close()
