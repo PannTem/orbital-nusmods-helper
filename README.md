@@ -1,5 +1,5 @@
 # orbital-nusmods-helper
-Papangkorn's and Piyaphat's project for NUS Orbital 2026
+Papangkorn's and Piyaphat's project for NUS Orbital 2026 (Apollo Level)
 
 ## Prerequisites
 
@@ -93,3 +93,15 @@ npm run dev
 ```
 
 Then open `http://localhost:5173` in your browser.
+
+
+# Orbital-related stuff
+
+Problem motivation: Want to help NUS students make better, more informed decisions 
+about which modules to take
+Especially by making information written by other students more accessible
+
+User stories: As a NUSMODS user, I want someone to gather the data from previous students'
+comments and collage it into a block of important information about the course that I can
+read within a minute.
+
