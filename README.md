@@ -15,7 +15,7 @@ git clone https://github.com/YOUR_USERNAME/orbital-nusmods-helper.git
 cd orbital-nusmods-helper
 ```
 
-### 2. Configure environment variables
+### 2. (IGNORE THIS PART IF YOU ARENT USING YOUR OWN API KEY) Configure environment variables
 
 ```bash
 cp .env.example .env
@@ -40,12 +40,12 @@ source ../.venv/bin/activate      # Windows: ..\.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-> **Note:** Installing `torch` and `transformers` may take several minutes and requires ~2 GB of disk space.
+> **Note:** `transformers` is like 2GB so you are gonna need space and time to run this command
 
 ### Run the backend
 
 ```bash
-# From the backend/ directory, with .venv activated
+# From the backend/ directory, with or without  .venv activated
 uvicorn main:app --reload
 ```
 
