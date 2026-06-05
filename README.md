@@ -4,6 +4,11 @@ Team: Papangkorn & Piyaphat
 Level: Apollo  
 Period covered: 13 May 2026 — 1 June 2026
 
+## Prerequisites
+
+- Python 3.10+
+- Node.js 18+ and npm
+
 ---
 
 ### Motivation
@@ -67,6 +72,14 @@ cd backend
 python -m venv ../.venv
 source ../.venv/bin/activate     # Windows: ..\.venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+> **Note:** `transformers` is like 2GB so you are gonna need space and time to run this command
+
+### Run the backend
+
+```bash
+# From the backend/ directory, with or without  .venv activated
 uvicorn main:app --reload
 ```
 
