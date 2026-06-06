@@ -1,12 +1,62 @@
 import json
 import secrets
 import sqlite3
+import uuid
+from datetime import date, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 import api
 import database_access
 import timetable_generator
+
+# ── iCal helpers ──────────────────────────────────────────────────────────────
+
+# AY2025-2026 teaching week start dates (Monday of week 1)
+_SEM_STARTS = {1: date(2025, 8, 11), 2: date(2026, 1, 12)}
+# Recess week falls between academic week 6 and 7 (skip one calendar week)
+_DAY_OFFSET = {"Monday":0,"Tuesday":1,"Wednesday":2,"Thursday":3,"Friday":4,"Saturday":5,"Sunday":6}
+
+def _week_monday(sem: int, week: int) -> date:
+    base = _SEM_STARTS.get(sem, _SEM_STARTS[1])
+    # Academic weeks 1-6 are contiguous; recess after week 6 adds +1 calendar week
+    offset = week - 1 if week <= 6 else week  # +1 skips recess week
+    return base + timedelta(weeks=offset)
+
+def _slots_to_ical(rendered_slots: list, sem: int) -> str:
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//NUSMods Helper//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+    ]
+    for slot in rendered_slots:
+        day_off = _DAY_OFFSET.get(slot.get("day","Monday"), 0)
+        st = slot.get("startTime","0800")
+        et = slot.get("endTime","0900")
+        sh, sm = int(st[:2]), int(st[2:])
+        eh, em = int(et[:2]), int(et[2:])
+        weeks = slot.get("weeks", list(range(1,14)))
+        mc    = slot.get("moduleCode","")
+        lt    = slot.get("lessonType","")
+        cn    = slot.get("classNo","")
+        venue = slot.get("venue","")
+        for wk in weeks:
+            d = _week_monday(sem, wk) + timedelta(days=day_off)
+            uid = str(uuid.uuid4()).replace("-","")
+            lines += [
+                "BEGIN:VEVENT",
+                f"UID:{uid}@nusmods-helper",
+                f"DTSTART:{d.strftime('%Y%m%d')}T{sh:02d}{sm:02d}00",
+                f"DTEND:{d.strftime('%Y%m%d')}T{eh:02d}{em:02d}00",
+                f"SUMMARY:{mc} {lt} [{cn}]",
+                f"LOCATION:{venue}",
+                "END:VEVENT",
+            ]
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines)
 
 router = APIRouter(tags=["timetable"])
 
@@ -111,6 +161,19 @@ def update_slot(user_id: str, body: SlotSelection,
         user_id, body.module_code, body.lesson_type, body.class_no, body.sem, conn
     )
     return {"ok": True}
+
+
+@router.get("/timetable/{user_id}/export.ics")
+def export_timetable_ical(user_id: str, sem: int = 1,
+                           conn: sqlite3.Connection = Depends(get_conn)):
+    """Download the user's timetable as an iCalendar (.ics) file."""
+    timetable = get_timetable(user_id, sem, conn)
+    ical = _slots_to_ical(timetable["rendered_slots"], sem)
+    return Response(
+        content=ical,
+        media_type="text/calendar",
+        headers={"Content-Disposition": f"attachment; filename=timetable-sem{sem}.ics"},
+    )
 
 
 @router.delete("/timetable/{user_id}/modules/{module_code}")

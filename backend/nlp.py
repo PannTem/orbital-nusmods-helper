@@ -148,7 +148,7 @@ def extract_actual_gpa(comment):
     \s*[:\-]?\s*
     (A\+|A-|A|B\+|B-|B|C\+|C-|C|D\+|D|F)
     """
-    
+
     cleaned = clean_comment_message(comment)
     match = re.search(pattern, cleaned, re.IGNORECASE | re.VERBOSE)
 
@@ -157,3 +157,103 @@ def extract_actual_gpa(comment):
         return grade_map.get(letter_grade)
 
     return None #no match found
+
+
+# ── Extractive summarisation ──────────────────────────────────────────────────
+
+from collections import Counter
+
+_STOPWORDS = {
+    'the','a','an','is','it','in','of','and','to','i','for','that','this','was',
+    'are','with','as','at','be','by','from','or','but','not','have','has','had',
+    'my','me','we','you','he','she','they','so','if','do','did','will','can','on',
+    'its','also','very','your','our','their','which','who','what','just','been',
+    'when','would','could','should','than','then','there','some','more','about',
+    'one','all','up','out','module','course','class','sem','semester','nus',
+}
+
+def extractive_summarize(texts, num_sentences=5):
+    """Return a summary paragraph from a list of cleaned comment strings."""
+    if not texts:
+        return None
+
+    combined = ' '.join(texts)
+
+    # Split into sentences (rough)
+    raw_sentences = re.split(r'(?<=[.!?])\s+', combined)
+    sentences = [s.strip() for s in raw_sentences if len(s.strip()) > 40]
+
+    if not sentences:
+        return None
+
+    # Word frequency (stop-word filtered)
+    words = re.findall(r'\b[a-z]+\b', combined.lower())
+    freq = Counter(w for w in words if w not in _STOPWORDS and len(w) > 2)
+    if not freq:
+        return None
+
+    def score(sent):
+        ws = re.findall(r'\b[a-z]+\b', sent.lower())
+        return sum(freq.get(w, 0) for w in ws) / max(len(ws), 1)
+
+    scored = sorted(enumerate(sentences), key=lambda x: score(x[1]), reverse=True)
+    top_idx = sorted([i for i, _ in scored[:num_sentences]])
+    return ' '.join(sentences[i] for i in top_idx)
+
+
+# ── Grade threshold extraction ────────────────────────────────────────────────
+
+import statistics
+
+_GRADE_ORDER = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D']
+_GRADE_PAT   = r'(?:A\+|A-|A|B\+|B-|B|C\+|C-|C|D\+|D)'
+
+# Patterns: each yields (grade_or_score, score_or_grade) pairs
+_THRESHOLD_PATTERNS = [
+    # "got A with 85", "scored B+ with 75%", "received A- at 88 marks"
+    rf'(?:got|scored|received|achieved|obtained|ended\s+up\s+(?:with)?|grade)\s+({_GRADE_PAT})\D{{0,15}}?(\d{{2,3}})',
+    # "A: 85", "B+: 75-84", "A- – 88"
+    rf'({_GRADE_PAT})\s*[:\-–]\s*(\d{{2,3}})',
+    # "85 for A", "78 marks for B+", "need 80 for an A-"
+    rf'(\d{{2,3}})\s*(?:%|marks?|points?)?\s+(?:for|to\s+get|gets?)\s+(?:an?\s+)?({_GRADE_PAT})',
+    # "cutoff for A is 80", "A cutoff at 85", "A+ requires 90"
+    rf'({_GRADE_PAT})\s+(?:cutoff|cut.off|requires?|needs?|minimum)\s+(?:is|was|at|of|around)?\s*(\d{{2,3}})',
+    rf'(?:cutoff|cut.off|minimum)\s+(?:for\s+)?(?:an?\s+)?({_GRADE_PAT})\s+(?:is|was|at|around)?\s*(\d{{2,3}})',
+    # "above 85 is A", "80 and above gets A-"
+    rf'(\d{{2,3}})\s*(?:and\s+above|or\s+above|\+)?\s+(?:is|gets?|for)\s+(?:an?\s+)?({_GRADE_PAT})',
+]
+
+def extract_grade_thresholds(texts):
+    """
+    Parse self-reported grade scores from review texts.
+    Returns an ordered dict {grade: median_score} for grades with data, or None.
+    """
+    buckets: dict[str, list[int]] = {}
+
+    for text in texts:
+        text = re.sub(r'\s+', ' ', text)
+        for pat in _THRESHOLD_PATTERNS:
+            for m in re.findall(pat, text, re.IGNORECASE):
+                a, b = m[0].strip(), m[1].strip()
+                try:
+                    if re.match(r'^\d+$', a):
+                        score_val, grade = int(a), b.upper()
+                    else:
+                        grade, score_val = a.upper(), int(b)
+                    grade = grade.replace(' ', '')
+                    if grade in _GRADE_ORDER and 40 <= score_val <= 100:
+                        buckets.setdefault(grade, []).append(score_val)
+                except (ValueError, IndexError):
+                    continue
+
+    if not buckets:
+        return None
+
+    result = {
+        g: round(statistics.median(scores), 1)
+        for g, scores in buckets.items()
+        if scores
+    }
+    # Return in standard grade order
+    ordered = {g: result[g] for g in _GRADE_ORDER if g in result}
+    return ordered if ordered else None

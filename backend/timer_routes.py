@@ -120,10 +120,20 @@ def get_stats(user_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     return database_access.get_user_timer_stats(user_id, conn)
 
 
+@router.get("/timer/history/{user_id}")
+def get_history(user_id: str, days: int = 7,
+                conn: sqlite3.Connection = Depends(get_conn)):
+    return database_access.get_session_history(user_id, days, conn)
+
+
 @router.get("/timer/leaderboard")
-def get_leaderboard(faculty: Optional[str] = Query(None),
-                    conn: sqlite3.Connection = Depends(get_conn)):
-    return database_access.get_leaderboard(faculty, conn)
+def get_leaderboard(
+    faculty: Optional[str] = Query(None),
+    year:    Optional[int] = Query(None),
+    course:  Optional[str] = Query(None),
+    conn:    sqlite3.Connection = Depends(get_conn),
+):
+    return database_access.get_leaderboard(faculty, year, course, conn)
 
 
 # ── study groups ──────────────────────────────────────────────────────────────
@@ -156,3 +166,13 @@ def get_group(invite_code: str, conn: sqlite3.Connection = Depends(get_conn)):
         raise HTTPException(404, "Group not found")
     leaderboard = database_access.get_group_leaderboard(group["id"], conn)
     return {**dict(group), "leaderboard": leaderboard}
+
+
+@router.delete("/groups/{invite_code}/members/{user_id}")
+def leave_group(invite_code: str, user_id: str,
+                conn: sqlite3.Connection = Depends(get_conn)):
+    group = database_access.get_group_by_code(invite_code, conn)
+    if not group:
+        raise HTTPException(404, "Group not found")
+    database_access.leave_group(invite_code, user_id, conn)
+    return {"ok": True}

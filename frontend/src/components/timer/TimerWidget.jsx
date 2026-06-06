@@ -55,11 +55,11 @@ export default function TimerWidget({ userId }) {
       <div style={styles.controls}>
         {!running ? (
           <button className="btn-primary" style={styles.bigBtn} onClick={startTimer}>
-            ▶ Start
+            Start
           </button>
         ) : (
           <button className="btn-danger" style={styles.bigBtn} onClick={stopTimer}>
-            ■ Stop
+            Stop
           </button>
         )}
       </div>
@@ -81,25 +81,25 @@ export default function TimerWidget({ userId }) {
 const styles = {
   widget: {
     background: 'white',
-    border: '1px solid #e2e8f0',
-    borderRadius: 16,
-    padding: 32,
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    padding: '32px 24px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 24,
+    gap: 20,
   },
   display: {
-    fontSize: 72,
+    fontSize: 64,
     fontWeight: 700,
     fontVariantNumeric: 'tabular-nums',
-    color: '#1e293b',
+    color: 'var(--text)',
     letterSpacing: -2,
   },
   controls: {},
-  bigBtn: { padding: '14px 48px', fontSize: 18, borderRadius: 50 },
-  statsRow: { display: 'flex', gap: 24 },
+  bigBtn: { padding: '10px 36px', fontSize: 15 },
+  statsRow: { display: 'flex', gap: 32, borderTop: '1px solid var(--border)', paddingTop: 16, width: '100%', justifyContent: 'center' },
   statBox: { textAlign: 'center' },
-  statLabel: { fontSize: 12, color: '#94a3b8', fontWeight: 500 },
-  statValue: { fontSize: 24, fontWeight: 700, color: '#2563eb' },
+  statLabel: { fontSize: 11, color: 'var(--text-subtle)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' },
+  statValue: { fontSize: 20, fontWeight: 700, color: 'var(--text)', marginTop: 2 },
 }

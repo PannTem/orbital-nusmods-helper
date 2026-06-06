@@ -55,23 +55,23 @@ export default function SharedTimetable() {
       <div style={s.topBar}>
         <h1 className="page-title" style={{ marginBottom: 0 }}>Shared Timetable</h1>
         <span style={s.semBadge}>Sem {data.sem}</span>
-        <span style={s.readOnly}>Read-only</span>
         {data.created_at && (
           <span style={s.meta}>
-            Shared on {data.created_at.slice(0, 10)}
+            Shared {data.created_at.slice(0, 10)} · View only
           </span>
         )}
       </div>
 
-      {/* Module badges */}
+      {/* Module tags */}
       <div style={s.modules}>
         {moduleCodes.map(mc => (
           <span
             key={mc}
             style={{
               ...s.modTag,
-              background: moduleColors[mc] + '20',
+              background: moduleColors[mc] + '18',
               color: moduleColors[mc],
+              borderColor: moduleColors[mc] + '40',
             }}
           >
             {mc}
@@ -99,19 +99,16 @@ const s = {
     marginBottom: 16, flexWrap: 'wrap',
   },
   semBadge: {
-    background: '#eff6ff', color: '#2563eb',
-    fontWeight: 700, fontSize: 13,
-    padding: '4px 12px', borderRadius: 20,
+    background: 'var(--border-light)', color: 'var(--text-muted)',
+    fontWeight: 600, fontSize: 12,
+    padding: '3px 10px', borderRadius: 4,
+    border: '1px solid var(--border)',
   },
-  readOnly: {
-    background: '#f1f5f9', color: '#64748b',
-    fontSize: 12, padding: '4px 10px', borderRadius: 20,
-    border: '1px solid #e2e8f0',
-  },
-  meta: { color: '#94a3b8', fontSize: 12 },
-  modules: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 },
+  meta: { color: 'var(--text-subtle)', fontSize: 12 },
+  modules: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 },
   modTag: {
-    padding: '4px 14px', borderRadius: 20,
-    fontWeight: 700, fontSize: 13,
+    padding: '3px 10px', borderRadius: 4,
+    fontWeight: 600, fontSize: 12,
+    border: '1px solid',
   },
 }

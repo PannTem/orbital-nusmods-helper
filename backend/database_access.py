@@ -116,6 +116,21 @@ def init_db():
         )
     """)
 
+    # ── new module analysis columns (silently skip if already present) ──────────
+    for col_sql in [
+        "ALTER TABLE module_scores ADD COLUMN summary TEXT",
+        "ALTER TABLE module_scores ADD COLUMN grade_thresholds_json TEXT",
+        "ALTER TABLE module_scores ADD COLUMN workload_json TEXT",
+        "ALTER TABLE module_scores ADD COLUMN prerequisite TEXT",
+        "ALTER TABLE module_scores ADD COLUMN preclusion TEXT",
+        # v1 = pipeline includes workload + prereq; 0 = legacy cached entry
+        "ALTER TABLE module_scores ADD COLUMN analysis_version INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(col_sql)
+        except Exception:
+            pass
+
     # ── streak columns (silently skip if already present) ─────────────────────
     for col_sql in [
         "ALTER TABLE users ADD COLUMN review_streak INTEGER DEFAULT 0",
@@ -151,10 +166,20 @@ def get_cached_module(module_code: str, conn: sqlite3.Connection):
 def save_module_data(module_code, title, description, module_credits, department,
                      difficulty_score, recommend_score,
                      top_positive_comment, top_neutral_comment, top_negative_comment,
-                     comment_count, expected_gpa, actual_gpa, conn):
+                     comment_count, expected_gpa, actual_gpa,
+                     summary, grade_thresholds_json,
+                     workload_json, prerequisite, preclusion, conn):
     conn.execute("""
         INSERT OR REPLACE INTO module_scores
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (module_code, title, description, module_credits, department,
+         difficulty_score, recommend_score,
+         top_positive_comment_message, top_positive_comment_likes,
+         top_neutral_comment_message,  top_neutral_comment_likes,
+         top_negative_comment_message, top_negative_comment_likes,
+         comment_count, expected_gpa, actual_gpa,
+         summary, grade_thresholds_json, workload_json, prerequisite, preclusion,
+         analysis_version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     """, (
         module_code, title, description, module_credits, department,
         difficulty_score, recommend_score,
@@ -162,8 +187,24 @@ def save_module_data(module_code, title, description, module_credits, department
         top_neutral_comment["message"],  top_neutral_comment["likes"],
         top_negative_comment["message"], top_negative_comment["likes"],
         comment_count, expected_gpa, actual_gpa,
+        summary, grade_thresholds_json, workload_json, prerequisite, preclusion,
     ))
     conn.commit()
+
+
+def get_session_history(user_id: str, days: int, conn):
+    """Return per-day study totals for the last N days."""
+    rows = conn.execute("""
+        SELECT date(start_time, 'localtime') AS day,
+               SUM(duration_seconds) AS seconds
+        FROM study_sessions
+        WHERE user_id = ?
+          AND duration_seconds IS NOT NULL
+          AND start_time >= datetime('now', ?, 'localtime')
+        GROUP BY date(start_time, 'localtime')
+        ORDER BY day
+    """, (user_id, f'-{days} days')).fetchall()
+    return [{"day": r["day"], "seconds": r["seconds"]} for r in rows]
 
 
 # ── users ─────────────────────────────────────────────────────────────────────
@@ -255,34 +296,35 @@ def get_user_timer_stats(user_id, conn):
     return {"today_seconds": today, "week_seconds": week}
 
 
-def get_leaderboard(faculty, conn, limit=10):
+def get_leaderboard(faculty, year_of_study, course, conn, limit=10):
+    conditions = []
+    params: list = []
     if faculty:
-        rows = conn.execute("""
-            SELECT u.user_id, u.display_name, u.faculty, u.year_of_study, u.course,
-                   COALESCE(SUM(s.duration_seconds), 0) AS week_seconds
-            FROM users u
-            LEFT JOIN study_sessions s
-              ON u.user_id=s.user_id
-              AND date(s.start_time)>=date('now','-6 days')
-              AND s.duration_seconds IS NOT NULL
-            WHERE u.faculty=?
-            GROUP BY u.user_id
-            ORDER BY week_seconds DESC
-            LIMIT ?
-        """, (faculty, limit)).fetchall()
-    else:
-        rows = conn.execute("""
-            SELECT u.user_id, u.display_name, u.faculty, u.year_of_study, u.course,
-                   COALESCE(SUM(s.duration_seconds), 0) AS week_seconds
-            FROM users u
-            LEFT JOIN study_sessions s
-              ON u.user_id=s.user_id
-              AND date(s.start_time)>=date('now','-6 days')
-              AND s.duration_seconds IS NOT NULL
-            GROUP BY u.user_id
-            ORDER BY week_seconds DESC
-            LIMIT ?
-        """, (limit,)).fetchall()
+        conditions.append("u.faculty = ?")
+        params.append(faculty)
+    if year_of_study:
+        conditions.append("u.year_of_study = ?")
+        params.append(int(year_of_study))
+    if course:
+        conditions.append("LOWER(u.course) LIKE ?")
+        params.append(f"%{course.lower()}%")
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.append(limit)
+
+    rows = conn.execute(f"""
+        SELECT u.user_id, u.display_name, u.faculty, u.year_of_study, u.course,
+               COALESCE(SUM(s.duration_seconds), 0) AS week_seconds
+        FROM users u
+        LEFT JOIN study_sessions s
+          ON u.user_id=s.user_id
+         AND date(s.start_time) >= date('now', '-6 days')
+         AND s.duration_seconds IS NOT NULL
+        {where}
+        GROUP BY u.user_id
+        ORDER BY week_seconds DESC
+        LIMIT ?
+    """, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -312,6 +354,15 @@ def join_group(group_id, user_id, conn):
     conn.execute("""
         INSERT OR IGNORE INTO study_group_members (group_id, user_id) VALUES (?, ?)
     """, (group_id, user_id))
+    conn.commit()
+
+
+def leave_group(invite_code: str, user_id: str, conn):
+    conn.execute("""
+        DELETE FROM study_group_members
+        WHERE group_id = (SELECT id FROM study_groups WHERE invite_code=?)
+          AND user_id=?
+    """, (invite_code, user_id))
     conn.commit()
 
 
@@ -395,7 +446,8 @@ def create_timetable_share(token: str, user_id: str, sem: int,
 
 def get_timetable_share(token: str, conn: sqlite3.Connection):
     row = conn.execute(
-        "SELECT * FROM timetable_shares WHERE token=?", (token,)
+        "SELECT * FROM timetable_shares WHERE token=? AND created_at >= datetime('now', '-30 days')",
+        (token,)
     ).fetchone()
     return dict(row) if row else None
 

@@ -2,18 +2,67 @@
 Backtracking timetable generator.
 
 Explores all conflict-free slot combinations for a set of modules and returns
-the top N results ranked by a weighted 5-dimensional score:
-  • latest_start  – prefer classes that begin late
-  • earliest_end  – prefer classes that finish early
-  • lunch_break   – keep 12:00–14:00 free each day
-  • compact_days  – fewer days with any classes
-  • minimal_gaps  – minimise idle time between first and last class each day
+the top N results ranked by a weighted 6-dimensional score:
+  • latest_start     – prefer classes that begin late
+  • earliest_end     – prefer classes that finish early
+  • lunch_break      – keep 12:00–14:00 free each day
+  • compact_days     – fewer days with any classes
+  • minimal_gaps     – minimise idle time between first and last class each day
+  • minimize_travel  – avoid back-to-back classes in distant campus zones
 """
 
 import heapq
 import time
 from typing import List, Dict, Any
 import api
+
+# ── NUS campus zone lookup ────────────────────────────────────────────────────
+# Each zone is an integer index into _ZONE_TRAVEL.
+# Venue strings from NUSMods look like "COM1-0210", "AS4-0602", "LT27", etc.
+
+_ZONE_NAMES = ["Computing", "Arts/FASS", "Science", "Engineering",
+               "Business", "UTown", "Bukit Timah", "Medicine", "Central/LT"]
+
+_ZONE_TRAVEL = [
+    #  COM  AS  SCI  ENG  BIZ  UTW   BT  MED  CTR
+    [   2,   8,   5,  12,  10,  15,  30,  20,   8],  # 0 Computing
+    [   8,   2,   8,  15,  12,  12,  25,  20,   5],  # 1 Arts/FASS
+    [   5,   8,   2,  15,  12,  18,  30,  20,   8],  # 2 Science
+    [  12,  15,  15,   2,  12,  25,  35,  25,  15],  # 3 Engineering
+    [  10,  12,  12,  12,   2,  15,  25,  20,  10],  # 4 Business
+    [  15,  12,  18,  25,  15,   2,  20,  25,  12],  # 5 UTown
+    [  30,  25,  30,  35,  25,  20,   2,  30,  25],  # 6 Bukit Timah
+    [  20,  20,  20,  25,  20,  25,  30,   2,  20],  # 7 Medicine
+    [   8,   5,   8,  15,  10,  12,  25,  20,   2],  # 8 Central/LT
+]
+
+
+def _venue_zone(venue: str) -> int:
+    """Map a NUSMods venue string to a campus zone index."""
+    if not venue:
+        return 8
+    b = venue.upper().split("-")[0]
+    if b.startswith("COM") or b.startswith("I3"):
+        return 0
+    if b.startswith("AS"):
+        return 1
+    if b.startswith("FASS") or b.startswith("UT-"):
+        return 1
+    if b.startswith("S") and len(b) <= 4 and b[1:].isdigit():
+        return 2
+    if b.startswith("E") and len(b) <= 3 and b[1:].isdigit():
+        return 3
+    if b in ("EA", "EW", "E-LR1", "E-LR2"):
+        return 3
+    if b.startswith("BIZ"):
+        return 4
+    if b.startswith("UTW") or b.startswith("ERC") or b in ("RC4", "RVRC", "CAPT"):
+        return 5
+    if b.startswith("BSPR") or b.startswith("BTAP"):
+        return 6
+    if b.startswith("MD") or b.startswith("NUHS") or b.startswith("CRC"):
+        return 7
+    return 8  # LT, YIH, CLB, MPSH, unknown → Central
 
 
 def _to_min(t: str) -> int:
@@ -26,11 +75,14 @@ def _score(flat_slots: List[Dict], prefs: Dict) -> float:
     if not flat_slots:
         return 0.0
 
-    days: Dict[str, List[tuple]] = {}
+    days: Dict[str, List[tuple]] = {}         # day → [(start, end)]
+    days_v: Dict[str, List[tuple]] = {}       # day → [(start, end, venue)]
     for s in flat_slots:
         start = _to_min(s["startTime"])
         end   = _to_min(s["endTime"])
+        venue = s.get("venue", "")
         days.setdefault(s["day"], []).append((start, end))
+        days_v.setdefault(s["day"], []).append((start, end, venue))
 
     n = len(days)
 
@@ -60,16 +112,34 @@ def _score(flat_slots: List[Dict], prefs: Dict) -> float:
     )
     gap_score = total_class / total_span if total_span > 0 else 1.0
 
-    w_ls = prefs.get("latest_start", 0.2)
-    w_ee = prefs.get("earliest_end", 0.2)
-    w_lb = prefs.get("lunch_break",  0.2)
-    w_cd = prefs.get("compact_days", 0.2)
-    w_mg = prefs.get("minimal_gaps", 0.2)
-    total_w = (w_ls + w_ee + w_lb + w_cd + w_mg) or 1.0
+    # Minimize travel: penalise consecutive classes in distant campus zones.
+    # Score = fraction of back-to-back pairs where gap ≥ required travel time.
+    travel_pairs = 0
+    travel_ok    = 0
+    for segs in days_v.values():
+        ordered = sorted(segs, key=lambda x: x[0])
+        for i in range(len(ordered) - 1):
+            _, end1, v1 = ordered[i]
+            start2, _, v2 = ordered[i + 1]
+            gap_min     = start2 - end1
+            needed      = _ZONE_TRAVEL[_venue_zone(v1)][_venue_zone(v2)]
+            travel_pairs += 1
+            if gap_min >= needed:
+                travel_ok += 1
+    travel_score = travel_ok / travel_pairs if travel_pairs else 1.0
+
+    w_ls = prefs.get("latest_start",    0.2)
+    w_ee = prefs.get("earliest_end",    0.2)
+    w_lb = prefs.get("lunch_break",     0.2)
+    w_cd = prefs.get("compact_days",    0.2)
+    w_mg = prefs.get("minimal_gaps",    0.2)
+    w_mt = prefs.get("minimize_travel", 0.0)
+    total_w = (w_ls + w_ee + w_lb + w_cd + w_mg + w_mt) or 1.0
 
     return round(
         (w_ls * latest_start + w_ee * earliest_end +
-         w_lb * lunch + w_cd * compact + w_mg * gap_score) / total_w,
+         w_lb * lunch + w_cd * compact + w_mg * gap_score +
+         w_mt * travel_score) / total_w,
         4,
     )
 

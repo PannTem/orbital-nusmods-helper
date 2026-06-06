@@ -1,4 +1,52 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+
+// All CourseReg rounds with parseable start dates
+const ROUND_DATES = [
+  { label: 'Sem 1 Round 0',    date: new Date('2025-07-07') },
+  { label: 'Sem 1 Round 1A',   date: new Date('2025-07-14') },
+  { label: 'Sem 1 Round 1B',   date: new Date('2025-07-21') },
+  { label: 'Sem 1 Round 2',    date: new Date('2025-07-28') },
+  { label: 'Sem 1 Add/Drop',   date: new Date('2025-08-11') },
+  { label: 'Sem 2 Round 0',    date: new Date('2025-11-10') },
+  { label: 'Sem 2 Round 1A',   date: new Date('2025-11-17') },
+  { label: 'Sem 2 Round 1B',   date: new Date('2025-11-24') },
+  { label: 'Sem 2 Round 2',    date: new Date('2025-12-01') },
+  { label: 'Sem 2 Add/Drop',   date: new Date('2026-01-12') },
+]
+
+function CourseRegCountdown() {
+  const [info, setInfo] = useState(null)
+  useEffect(() => {
+    function compute() {
+      const now = new Date()
+      const upcoming = ROUND_DATES.filter(r => r.date >= now)
+      if (upcoming.length === 0) { setInfo({ done: true }); return }
+      const next = upcoming[0]
+      const days = Math.ceil((next.date - now) / 86400000)
+      setInfo({ label: next.label, days })
+    }
+    compute()
+    const t = setInterval(compute, 60000)
+    return () => clearInterval(t)
+  }, [])
+
+  if (!info) return null
+  if (info.done) return (
+    <div style={cd.wrap}>
+      <span style={cd.label}>AY2025/2026 CourseReg</span>
+      <span style={cd.val}>All rounds complete</span>
+    </div>
+  )
+  return (
+    <div style={cd.wrap}>
+      <span style={cd.label}>Next: {info.label}</span>
+      <span style={cd.val}>
+        {info.days === 0 ? 'Today' : info.days === 1 ? 'Tomorrow' : `In ${info.days} days`}
+      </span>
+    </div>
+  )
+}
 
 // AY2025/2026 CourseReg rounds (Semester 1 & 2)
 const ROUNDS = {
@@ -20,32 +68,28 @@ const ROUNDS = {
 
 const FEATURES = [
   {
-    icon: '📅',
     title: 'Timetable Builder',
-    desc: 'Search any NUSMods module and pick your tutorial and lab slots. Auto-Generate finds the top 5 conflict-free timetables ranked by your preferences. Share a link with friends.',
+    desc: 'Search any NUSMods module and pick your tutorial and lab slots. Auto-generate finds the top 5 conflict-free timetables ranked by your preferences. Share a link with friends.',
     to: '/timetable',
-    cta: 'Open Timetable',
+    cta: 'Open timetable',
   },
   {
-    icon: '🔍',
     title: 'Module Analysis',
     desc: 'Enter any module code to see NLP-powered difficulty ratings, recommendation scores, and GPA outcomes extracted from real student reviews on NUSMods.',
     to: '/analysis',
-    cta: 'Analyse a Module',
+    cta: 'Analyse a module',
   },
   {
-    icon: '⏱',
     title: 'Study Timer',
-    desc: 'Track study hours with a one-click timer. Compare yourself against your faculty or year group on the anonymous leaderboard.',
+    desc: 'Track study hours with a one-click timer. Compare yourself against your faculty or year group on the anonymous weekly leaderboard.',
     to: '/timer',
-    cta: 'Start Studying',
+    cta: 'Start studying',
   },
   {
-    icon: '🧠',
-    title: 'Study Plan (SM-2)',
-    desc: 'Enter your exam dates and topics. The SM-2 spaced-repetition algorithm schedules daily review cards so you retain everything by exam day. Export to calendar.',
+    title: 'Study Plan',
+    desc: 'Enter your exam dates and topics. The SM-2 spaced-repetition algorithm schedules daily review cards so you retain everything by exam day.',
     to: '/studyplan',
-    cta: 'Build My Plan',
+    cta: 'Build my plan',
   },
 ]
 
@@ -78,26 +122,29 @@ export default function Home() {
     <div className="page">
       {/* Hero */}
       <div style={s.hero}>
+        <p style={s.heroEyebrow}>NUSMods Helper · AY2025/2026</p>
         <h1 style={s.heroTitle}>Plan smarter.<br />Study better.</h1>
         <p style={s.heroCopy}>
           An all-in-one companion for NUS students — from CourseReg day to final exams.
         </p>
-        <Link to="/timetable">
-          <button className="btn-primary" style={{ padding: '12px 32px', fontSize: 16 }}>
-            Build my timetable →
-          </button>
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <Link to="/timetable">
+            <button className="btn-primary" style={{ padding: '9px 22px', fontSize: 14 }}>
+              Build my timetable
+            </button>
+          </Link>
+          <CourseRegCountdown />
+        </div>
       </div>
 
       {/* Feature cards */}
       <div style={s.featureGrid}>
         {FEATURES.map(f => (
           <div key={f.title} className="card" style={s.featureCard}>
-            <div style={s.featureIcon}>{f.icon}</div>
             <h2 style={s.featureTitle}>{f.title}</h2>
             <p style={s.featureDesc}>{f.desc}</p>
-            <Link to={f.to}>
-              <button className="btn-primary" style={{ width: '100%', marginTop: 'auto' }}>{f.cta}</button>
+            <Link to={f.to} style={{ marginTop: 'auto' }}>
+              <button className="btn-ghost" style={{ width: '100%' }}>{f.cta} →</button>
             </Link>
           </div>
         ))}
@@ -121,9 +168,9 @@ export default function Home() {
           </div>
         </div>
 
-        <div style={s.tip}>
-          <strong>💡 Tip:</strong> In Round 1A/1B, vacancies are allocated by priority. Having a backup slot ready increases your chance of getting a good timetable.
-        </div>
+        <p style={s.tip}>
+          In Round 1A/1B, vacancies are allocated by priority. Having a backup slot ready increases your chance of getting a good timetable.
+        </p>
       </div>
     </div>
   )
@@ -131,53 +178,61 @@ export default function Home() {
 
 const s = {
   hero: {
-    background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)',
-    borderRadius: 16,
-    padding: '56px 48px',
-    color: 'white',
-    marginBottom: 32,
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    padding: '40px 36px',
+    marginBottom: 24,
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
+    gap: 12,
     alignItems: 'flex-start',
   },
-  heroTitle: { fontSize: 40, fontWeight: 800, lineHeight: 1.15, margin: 0 },
-  heroCopy: { fontSize: 17, opacity: 0.85, maxWidth: 480, margin: 0 },
-  featureGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 40 },
+  heroEyebrow: { fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', letterSpacing: '0.08em', textTransform: 'uppercase', margin: 0 },
+  heroTitle: { fontSize: 34, fontWeight: 800, lineHeight: 1.2, margin: 0, letterSpacing: '-0.5px', color: 'var(--text)' },
+  heroCopy: { fontSize: 15, color: 'var(--text-muted)', maxWidth: 440, margin: 0, lineHeight: 1.65 },
+  featureGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 },
   featureCard: { display: 'flex', flexDirection: 'column', gap: 10 },
-  featureIcon: { fontSize: 36 },
-  featureTitle: { fontWeight: 700, fontSize: 18 },
-  featureDesc: { color: '#64748b', fontSize: 14, lineHeight: 1.6, flex: 1 },
-  section: { background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 32 },
-  sectionTitle: { fontWeight: 700, fontSize: 20, marginBottom: 8 },
-  sectionSub: { color: '#64748b', fontSize: 14, marginBottom: 24 },
-  semGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 },
-  semLabel: { fontWeight: 700, fontSize: 15, marginBottom: 10, color: '#1e293b' },
+  featureTitle: { fontWeight: 700, fontSize: 15, color: 'var(--text)' },
+  featureDesc: { color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6, flex: 1 },
+  section: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '28px 28px 20px' },
+  sectionTitle: { fontWeight: 700, fontSize: 17, marginBottom: 6, color: 'var(--text)' },
+  sectionSub: { color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 },
+  semGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 28 },
+  semLabel: { fontWeight: 600, fontSize: 13, marginBottom: 8, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' },
   tip: {
-    marginTop: 20,
-    background: '#eff6ff',
-    border: '1px solid #bfdbfe',
-    borderRadius: 8,
-    padding: '12px 16px',
-    fontSize: 14,
-    color: '#1e40af',
+    marginTop: 16,
+    color: 'var(--text-muted)',
+    fontSize: 13,
+    paddingTop: 12,
+    borderTop: '1px solid var(--border)',
   },
 }
 
+const cd = {
+  wrap: {
+    display: 'flex', flexDirection: 'column', gap: 1,
+    padding: '7px 14px', borderRadius: 'var(--radius)',
+    border: '1px solid var(--border)', background: 'var(--border-light)',
+  },
+  label: { fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' },
+  val: { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
+}
+
 const tbl = {
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 12 },
   th: {
     textAlign: 'left',
-    padding: '8px 10px',
-    background: '#f8fafc',
-    color: '#64748b',
+    padding: '6px 8px',
+    color: 'var(--text-muted)',
     fontWeight: 600,
     fontSize: 11,
     textTransform: 'uppercase',
-    borderBottom: '2px solid #e2e8f0',
+    letterSpacing: '0.05em',
+    borderBottom: '1px solid var(--border)',
   },
-  tr: { borderBottom: '1px solid #f1f5f9' },
-  roundCell: { padding: '10px 10px', fontWeight: 700, color: '#2563eb', whiteSpace: 'nowrap' },
-  dateCell: { padding: '10px 10px', color: '#374151', whiteSpace: 'nowrap' },
-  whoCell: { padding: '10px 10px', color: '#64748b' },
+  tr: { borderBottom: '1px solid var(--border-light)' },
+  roundCell: { padding: '8px 8px', fontWeight: 600, color: 'var(--primary)', whiteSpace: 'nowrap' },
+  dateCell: { padding: '8px 8px', color: 'var(--text)', whiteSpace: 'nowrap' },
+  whoCell: { padding: '8px 8px', color: 'var(--text-muted)' },
 }

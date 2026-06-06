@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { getUserId } from '../App.jsx'
 import {
   getTimetable, updateSlot, removeModule,
-  generateTimetable, shareTimetable,
+  generateTimetable, shareTimetable, exportTimetableIcal,
 } from '../api.js'
 import ModulePanel from '../components/timetable/ModulePanel.jsx'
 import TimetableGrid from '../components/timetable/TimetableGrid.jsx'
@@ -53,7 +53,8 @@ function GenerateModal({ sem, moduleCodes, prefs, setPrefs, generating, genResul
           <PrefSlider label="Earliest End"  value={prefs.earliest_end}  onChange={v => setPrefs(p => ({ ...p, earliest_end:  v }))} />
           <PrefSlider label="Lunch Break"   value={prefs.lunch_break}   onChange={v => setPrefs(p => ({ ...p, lunch_break:   v }))} />
           <PrefSlider label="Compact Days"  value={prefs.compact_days}  onChange={v => setPrefs(p => ({ ...p, compact_days:  v }))} />
-          <PrefSlider label="Minimal Gaps"  value={prefs.minimal_gaps}  onChange={v => setPrefs(p => ({ ...p, minimal_gaps:  v }))} />
+          <PrefSlider label="Minimal Gaps"     value={prefs.minimal_gaps}     onChange={v => setPrefs(p => ({ ...p, minimal_gaps:     v }))} />
+          <PrefSlider label="Minimize Travel"  value={prefs.minimize_travel}  onChange={v => setPrefs(p => ({ ...p, minimize_travel: v }))} />
         </div>
 
         <button
@@ -175,7 +176,7 @@ export default function Timetable() {
   const [showGenModal, setShowGenModal] = useState(false)
   const [prefs,        setPrefs]        = useState({
     latest_start: 0.2, earliest_end: 0.2, lunch_break: 0.2,
-    compact_days: 0.2, minimal_gaps: 0.2,
+    compact_days: 0.2, minimal_gaps: 0.2, minimize_travel: 0.0,
   })
   const [generating,  setGenerating]  = useState(false)
   const [genResults,  setGenResults]  = useState(null)
@@ -187,7 +188,29 @@ export default function Timetable() {
   const [sharing,        setSharing]        = useState(false)
   const [copied,         setCopied]         = useState(false)
 
-  const moduleCodes  = Object.keys(selections)
+  const moduleCodes = Object.keys(selections)
+
+  // Detect manually-selected conflicting slots
+  const conflicts = useMemo(() => {
+    function toMins(t) { return parseInt(t.slice(0, 2)) * 60 + parseInt(t.slice(2, 4)) }
+    const byDay = {}
+    for (const slot of renderedSlots) {
+      if (!byDay[slot.day]) byDay[slot.day] = []
+      byDay[slot.day].push(slot)
+    }
+    const bad = new Set()
+    for (const slots of Object.values(byDay)) {
+      for (let i = 0; i < slots.length; i++) {
+        for (let j = i + 1; j < slots.length; j++) {
+          const [a, b] = [slots[i], slots[j]]
+          if (toMins(a.startTime) < toMins(b.endTime) && toMins(b.startTime) < toMins(a.endTime)) {
+            bad.add(a.moduleCode); bad.add(b.moduleCode)
+          }
+        }
+      }
+    }
+    return [...bad]
+  }, [renderedSlots])
   const moduleColors = Object.fromEntries(
     moduleCodes.map((c, i) => [c, PALETTE[i % PALETTE.length]])
   )
@@ -347,7 +370,7 @@ export default function Timetable() {
         />
       )}
 
-      <div style={styles.topBar}>
+      <div className="no-print" style={styles.topBar}>
         <h1 className="page-title" style={{ marginBottom: 0 }}>Timetable Builder</h1>
         <div style={styles.semSwitch}>
           {[1, 2].map(s => (
@@ -368,14 +391,32 @@ export default function Timetable() {
               onClick={() => { setGenResults(null); setShowGenModal(true) }}
               style={{ padding: '6px 14px' }}
             >
-              ✨ Auto-Generate
+              Generate
             </button>
             <button
               className="btn-ghost"
               onClick={openShareModal}
               style={{ padding: '6px 14px' }}
             >
-              🔗 Share
+              Share
+            </button>
+          </>
+        )}
+        {moduleCodes.length > 0 && (
+          <>
+            <button
+              className="btn-ghost no-print"
+              onClick={() => exportTimetableIcal(userId, sem)}
+              style={{ padding: '6px 14px' }}
+            >
+              Export .ics
+            </button>
+            <button
+              className="btn-ghost no-print"
+              onClick={() => window.print()}
+              style={{ padding: '6px 14px' }}
+            >
+              Print
             </button>
           </>
         )}
@@ -383,7 +424,7 @@ export default function Timetable() {
       </div>
 
       <div style={styles.layout}>
-        <div style={styles.panelCol}>
+        <div className="no-print" style={styles.panelCol}>
           <ModulePanel
             sem={sem}
             selections={selections}
@@ -392,7 +433,12 @@ export default function Timetable() {
             moduleColors={moduleColors}
           />
         </div>
-        <div style={styles.gridCol}>
+        <div className="print-area" style={styles.gridCol}>
+          {conflicts.length > 0 && (
+            <div className="no-print" style={styles.conflictBanner}>
+              Time conflict: {conflicts.join(', ')} — pick different slots to resolve.
+            </div>
+          )}
           <TimetableGrid
             renderedSlots={renderedSlots}
             moduleColors={moduleColors}
@@ -400,6 +446,15 @@ export default function Timetable() {
           {moduleCodes.length === 0 && (
             <p style={styles.hint}>Add modules from the left panel to see them here.</p>
           )}
+          {/* colour legend — hidden on screen, shown when printing */}
+          <div className="print-legend">
+            {moduleCodes.map(code => (
+              <div key={code} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 12, height: 12, borderRadius: 3, background: moduleColors[code], flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: 700 }}>{code}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -432,47 +487,53 @@ const styles = {
   },
   gridCol: {},
   hint: { color: '#94a3b8', textAlign: 'center', marginTop: 40, fontSize: 14 },
+  conflictBanner: {
+    background: '#fff1f1', border: '1px solid #fecaca',
+    borderRadius: 'var(--radius)', padding: '9px 14px',
+    color: '#b91c1c', fontSize: 12, fontWeight: 500,
+    marginBottom: 12,
+  },
 }
 
 const ms = {
   overlay: {
     position: 'fixed', inset: 0,
-    background: 'rgba(0,0,0,0.5)',
+    background: 'rgba(0,0,0,0.4)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     zIndex: 200, padding: 20,
   },
   box: {
-    background: 'white', borderRadius: 12, padding: 24,
+    background: 'white', borderRadius: 'var(--radius)', padding: 24,
     width: '100%', maxWidth: 520,
     maxHeight: '90vh', overflowY: 'auto',
-    boxShadow: '0 20px 60px rgba(0,0,0,.25)',
+    border: '1px solid var(--border)',
   },
   header: {
     display: 'flex', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 12,
   },
-  title:    { fontWeight: 700, fontSize: 17 },
+  title:    { fontWeight: 700, fontSize: 16 },
   closeBtn: {
     background: 'none', border: 'none',
-    fontSize: 18, color: '#94a3b8', cursor: 'pointer',
+    fontSize: 18, color: 'var(--text-subtle)', cursor: 'pointer',
     padding: '4px 8px', borderRadius: 4,
   },
-  sub:      { color: '#64748b', fontSize: 13, marginBottom: 16 },
+  sub:      { color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 },
   secTitle: {
-    fontWeight: 600, fontSize: 11, color: '#94a3b8',
+    fontWeight: 600, fontSize: 11, color: 'var(--text-subtle)',
     textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10,
   },
   resultRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '10px 0', borderBottom: '1px solid #f1f5f9',
+    padding: '10px 0', borderBottom: '1px solid var(--border-light)',
   },
-  rank:  { fontWeight: 700, fontSize: 14, color: '#1e293b' },
-  score: { fontSize: 13, color: '#64748b' },
-  stars: { color: '#f59e0b', fontSize: 13 },
+  rank:  { fontWeight: 700, fontSize: 14, color: 'var(--text)' },
+  score: { fontSize: 13, color: 'var(--text-muted)' },
+  stars: { color: '#d97706', fontSize: 13 },
   checkRow: {
     display: 'flex', alignItems: 'center',
     padding: '9px 0', cursor: 'pointer',
-    borderBottom: '1px solid #f8fafc',
+    borderBottom: '1px solid var(--border-light)',
   },
   linkBox: { display: 'flex', gap: 8, alignItems: 'center' },
 }

@@ -19,8 +19,7 @@ export default function CardReviewer({ cards, onReviewed }) {
   if (cards.length === 0) {
     return (
       <div style={styles.empty}>
-        <div style={styles.emptyIcon}>🎉</div>
-        <p style={styles.emptyText}>No cards due today!</p>
+        <p style={styles.emptyText}>No cards due today</p>
         <p style={styles.emptySub}>Come back tomorrow for your next review session.</p>
       </div>
     )
@@ -29,11 +28,10 @@ export default function CardReviewer({ cards, onReviewed }) {
   if (done || idx >= cards.length) {
     return (
       <div style={styles.empty}>
-        <div style={styles.emptyIcon}>✅</div>
-        <p style={styles.emptyText}>Session complete!</p>
-        <p style={styles.emptySub}>You reviewed {cards.length} card{cards.length > 1 ? 's' : ''}. Great work!</p>
-        <button className="btn-primary" onClick={onReviewed} style={{ marginTop: 16 }}>
-          Refresh schedule
+        <p style={styles.emptyText}>Session complete</p>
+        <p style={styles.emptySub}>Reviewed {cards.length} card{cards.length > 1 ? 's' : ''}.</p>
+        <button className="btn-ghost" onClick={onReviewed} style={{ marginTop: 12 }}>
+          Back to schedule
         </button>
       </div>
     )
@@ -85,10 +83,10 @@ export default function CardReviewer({ cards, onReviewed }) {
                   key={q}
                   disabled={submitting}
                   onClick={() => handleRate(q)}
-                  style={{ ...styles.ratingBtn, borderColor: color, color }}
+                  style={{ ...styles.ratingBtn, background: color + '14' }}
                   title={desc}
                 >
-                  <span style={styles.ratingNum}>{q}</span>
+                  <span style={{ ...styles.ratingNum, color }}>{q}</span>
                   <span style={styles.ratingLbl}>{label}</span>
                 </button>
               ))}
@@ -107,41 +105,38 @@ const styles = {
   progressFill: { height: '100%', background: '#2563eb', borderRadius: 3, transition: 'width .3s' },
   card: {
     background: 'white',
-    border: '1px solid #e2e8f0',
-    borderRadius: 16,
-    padding: 32,
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    padding: 28,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 24,
-    minHeight: 280,
+    gap: 20,
+    minHeight: 260,
   },
   meta: { display: 'flex', gap: 10, alignItems: 'center', alignSelf: 'stretch' },
-  moduleTag: { background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 700 },
-  examDate: { color: '#64748b', fontSize: 12 },
-  reps: { color: '#94a3b8', fontSize: 12, marginLeft: 'auto' },
-  topic: { fontSize: 28, fontWeight: 700, textAlign: 'center', color: '#1e293b', lineHeight: 1.3 },
-  revealBtn: { padding: '12px 32px', fontSize: 15 },
+  moduleTag: { background: '#eff6ff', color: '#1d4ed8', borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 600 },
+  examDate: { color: 'var(--text-muted)', fontSize: 12 },
+  reps: { color: 'var(--text-subtle)', fontSize: 12, marginLeft: 'auto' },
+  topic: { fontSize: 24, fontWeight: 700, textAlign: 'center', color: 'var(--text)', lineHeight: 1.35 },
+  revealBtn: { padding: '10px 28px', fontSize: 14 },
   ratingSection: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, width: '100%' },
-  ratingLabel: { color: '#64748b', fontSize: 13 },
-  ratingGrid: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
+  ratingLabel: { color: 'var(--text-muted)', fontSize: 13 },
+  ratingGrid: { display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' },
   ratingBtn: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 2,
-    padding: '10px 14px',
-    border: '2px solid',
-    borderRadius: 8,
-    background: 'white',
+    padding: '9px 12px',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
     cursor: 'pointer',
-    minWidth: 60,
-    transition: 'transform .1s',
+    minWidth: 56,
   },
-  ratingNum: { fontSize: 20, fontWeight: 700 },
-  ratingLbl: { fontSize: 11, fontWeight: 500 },
-  empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 40, gap: 8 },
-  emptyIcon: { fontSize: 48 },
-  emptyText: { fontWeight: 700, fontSize: 20, color: '#1e293b' },
-  emptySub: { color: '#64748b', fontSize: 14 },
+  ratingNum: { fontSize: 18, fontWeight: 700 },
+  ratingLbl: { fontSize: 10, fontWeight: 500, color: 'var(--text-muted)' },
+  empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 20px', gap: 8 },
+  emptyText: { fontWeight: 600, fontSize: 16, color: 'var(--text)' },
+  emptySub: { color: 'var(--text-muted)', fontSize: 13 },
 }

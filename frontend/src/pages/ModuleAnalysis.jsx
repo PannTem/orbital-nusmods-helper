@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { getCourseInfo, searchModules } from '../api.js'
+import { useState, useEffect } from 'react'
+import { getCourseInfo, searchModules, getEasiestModules, getMostRecommended } from '../api.js'
 
 // ── Subcomponents ─────────────────────────────────────────────────────────────
 
@@ -40,20 +40,48 @@ function RecommendGauge({ score }) {
   )
 }
 
-function CommentCard({ comment, likes, sentiment }) {
-  if (!comment) return null
-  const colors = { positive: '#22c55e', neutral: '#f59e0b', negative: '#ef4444' }
-  const labels = { positive: '👍 Positive', neutral: '😐 Neutral', negative: '👎 Negative' }
-  const color  = colors[sentiment] || '#94a3b8'
+function ReviewSummary({ summary, gradeThresholds, commentCount }) {
+  if (commentCount === 0) return (
+    <div className="card" style={{ textAlign: 'center', padding: '28px 20px' }}>
+      <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0 }}>
+        No student reviews found on NUSMods for this module.
+        Scores above are unavailable without review data.
+      </p>
+    </div>
+  )
+
   return (
-    <div style={{ ...s.commentBox, borderLeft: `3px solid ${color}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ color, fontSize: 12, fontWeight: 700 }}>{labels[sentiment]}</span>
-        {likes != null && likes >= 0 && (
-          <span style={{ color: '#94a3b8', fontSize: 12 }}>{likes} ♥</span>
-        )}
-      </div>
-      <p style={s.commentText}>{comment}</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {summary && (
+        <div className="card">
+          <h3 style={s.statTitle}>Student Review Summary</h3>
+          <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.7, margin: 0 }}>{summary}</p>
+        </div>
+      )}
+
+      {gradeThresholds && Object.keys(gradeThresholds).length > 0 && (
+        <div className="card">
+          <h3 style={s.statTitle}>Self-Reported Grade Thresholds</h3>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+            Scores students reported achieving for each grade, extracted from reviews.
+          </p>
+          <div style={s.gradeTable}>
+            {Object.entries(gradeThresholds).map(([grade, score]) => {
+              const pct = Math.min(100, Math.max(0, (score - 40) / 60 * 100))
+              const color = score >= 80 ? '#16a34a' : score >= 65 ? '#d97706' : '#dc2626'
+              return (
+                <div key={grade} style={s.gradeRow}>
+                  <span style={s.gradeLabel}>{grade}</span>
+                  <div style={s.gradeBarTrack}>
+                    <div style={{ ...s.gradeBarFill, width: pct + '%', background: color }} />
+                  </div>
+                  <span style={{ ...s.gradeScore, color }}>{score}%</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -78,6 +106,45 @@ function AnalysisResult({ data }) {
           </div>
         </div>
         {data.description && <p style={s.desc}>{data.description}</p>}
+
+        {/* Workload */}
+        {data.workload && (
+          <div style={s.workloadRow}>
+            {['Lecture', 'Tutorial', 'Lab', 'Project', 'Prep'].map((label, i) => (
+              data.workload[i] != null && (
+                <div key={label} style={s.workloadCell}>
+                  <span style={s.workloadNum}>{data.workload[i]}</span>
+                  <span style={s.workloadLabel}>{label}</span>
+                </div>
+              )
+            ))}
+            <div style={s.workloadCell}>
+              <span style={s.workloadNum}>
+                {data.workload.reduce((a, b) => a + (b || 0), 0).toFixed(0)}
+              </span>
+              <span style={s.workloadLabel}>Total hrs/wk</span>
+            </div>
+          </div>
+        )}
+
+        {/* Prerequisite / Preclusion */}
+        {(data.prerequisite || data.preclusion) && (
+          <div style={s.reqRow}>
+            {data.prerequisite && (
+              <div style={s.reqItem}>
+                <span style={s.reqLabel}>Prerequisite</span>
+                <span style={s.reqText}>{data.prerequisite}</span>
+              </div>
+            )}
+            {data.preclusion && (
+              <div style={s.reqItem}>
+                <span style={s.reqLabel}>Preclusion</span>
+                <span style={s.reqText}>{data.preclusion}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         <p style={s.commentCount}>
           Based on <strong>{data.comment_count ?? 0}</strong> student reviews from NUSMods
         </p>
@@ -118,29 +185,77 @@ function AnalysisResult({ data }) {
         </div>
       </div>
 
-      {/* Top comments */}
-      {(data.top_positive_comment_message ||
-        data.top_neutral_comment_message  ||
-        data.top_negative_comment_message) && (
-        <div className="card">
-          <h3 style={s.statTitle}>Top Student Comments</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <CommentCard
-              comment={data.top_positive_comment_message}
-              likes={data.top_positive_comment_likes}
-              sentiment="positive"
-            />
-            <CommentCard
-              comment={data.top_neutral_comment_message}
-              likes={data.top_neutral_comment_likes}
-              sentiment="neutral"
-            />
-            <CommentCard
-              comment={data.top_negative_comment_message}
-              likes={data.top_negative_comment_likes}
-              sentiment="negative"
-            />
-          </div>
+      <ReviewSummary
+        summary={data.summary}
+        gradeThresholds={data.grade_thresholds}
+        commentCount={data.comment_count ?? 0}
+      />
+    </div>
+  )
+}
+
+// ── Top Modules discovery panel ───────────────────────────────────────────────
+
+function TopModulesPanel({ onSelect }) {
+  const [easiest,     setEasiest]     = useState(null)
+  const [recommended, setRecommended] = useState(null)
+  const [tab,         setTab]         = useState('easy')
+  const [hoveredRow,  setHoveredRow]  = useState(null)
+
+  useEffect(() => {
+    getEasiestModules(5).then(setEasiest).catch(() => setEasiest([]))
+    getMostRecommended(5).then(setRecommended).catch(() => setRecommended([]))
+  }, [])
+
+  const rows = (tab === 'easy' ? easiest : recommended) ?? null
+
+  return (
+    <div className="card" style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <h3 style={s.statTitle}>Top Modules (from cached reviews)</h3>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            className={tab === 'easy' ? 'btn-primary' : 'btn-ghost'}
+            style={{ padding: '4px 14px', fontSize: 12 }}
+            onClick={() => setTab('easy')}
+          >Easiest</button>
+          <button
+            className={tab === 'rec' ? 'btn-primary' : 'btn-ghost'}
+            style={{ padding: '4px 14px', fontSize: 12 }}
+            onClick={() => setTab('rec')}
+          >Most Recommended</button>
+        </div>
+      </div>
+
+      {rows === null && (
+        <p style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 12 }}>Loading…</p>
+      )}
+      {rows !== null && rows.length === 0 && (
+        <p style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 12 }}>
+          No data yet — analyse some modules first to populate this list.
+        </p>
+      )}
+      {rows !== null && rows.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {rows.slice(0, 8).map(m => (
+            <div
+              key={m.module_code}
+              style={{ ...s.topRow, background: hoveredRow === m.module_code ? '#f1f5f9' : 'transparent' }}
+              onClick={() => onSelect(m.module_code)}
+              onMouseEnter={() => setHoveredRow(m.module_code)}
+              onMouseLeave={() => setHoveredRow(null)}
+            >
+              <span style={s.topCode}>{m.module_code}</span>
+              <span style={s.topTitle}>{m.title}</span>
+              <span style={s.topStat}>
+                {tab === 'easy'
+                  ? (m.difficulty_score?.toFixed(1) ?? '—')
+                  : (m.recommendation_score != null ? (m.recommendation_score * 100).toFixed(0) + '%' : '—')
+                }
+              </span>
+              <span style={s.topCount}>{m.comment_count} reviews</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -214,6 +329,8 @@ export default function ModuleAnalysis() {
         and GPA analysis from real student reviews on NUSMods.
       </p>
 
+      <TopModulesPanel onSelect={code => { setQuery(code); analyze(code) }} />
+
       {/* Search bar */}
       <form onSubmit={handleSubmit} style={s.searchForm}>
         <div style={s.searchWrap}>
@@ -277,7 +394,7 @@ export default function ModuleAnalysis() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = {
-  sub: { color: '#64748b', fontSize: 14, marginBottom: 24, maxWidth: 580, lineHeight: 1.6 },
+  sub: { color: 'var(--text-muted)', fontSize: 13, marginBottom: 24, maxWidth: 580, lineHeight: 1.6 },
   searchForm: { display: 'flex', gap: 10, marginBottom: 24, alignItems: 'flex-start' },
   searchWrap: { position: 'relative', flex: 1, maxWidth: 520 },
   searchInput: { padding: '10px 14px', fontSize: 15, borderRadius: 8, border: '1.5px solid #e2e8f0' },
@@ -319,22 +436,23 @@ const s = {
     display: 'block', fontSize: 12, fontWeight: 700,
     color: '#2563eb', marginBottom: 6, letterSpacing: '0.05em',
   },
-  moduleTitle: { fontWeight: 800, fontSize: 22, margin: 0, color: '#0f172a' },
+  moduleTitle: { fontWeight: 700, fontSize: 20, margin: 0, color: 'var(--text)', letterSpacing: '-0.3px' },
   metaBadges: { display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' },
   creditBadge: {
-    background: '#eff6ff', color: '#1d4ed8',
-    fontWeight: 700, fontSize: 13, padding: '4px 12px', borderRadius: 20,
+    background: 'var(--border-light)', color: 'var(--primary)',
+    fontWeight: 600, fontSize: 12, padding: '3px 8px', borderRadius: 4,
+    border: '1px solid var(--border)',
   },
   deptBadge: {
-    background: '#f8fafc', color: '#64748b',
-    fontSize: 12, padding: '4px 12px', borderRadius: 20,
-    border: '1px solid #e2e8f0',
+    background: 'var(--border-light)', color: 'var(--text-muted)',
+    fontSize: 12, padding: '3px 8px', borderRadius: 4,
+    border: '1px solid var(--border)',
   },
   desc: { color: '#475569', fontSize: 14, lineHeight: 1.7, margin: '0 0 12px' },
   commentCount: { color: '#94a3b8', fontSize: 12, margin: 0 },
-  scoreGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 },
+  scoreGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 },
   statTitle: { fontWeight: 700, fontSize: 14, marginBottom: 14, color: '#1e293b' },
-  badge: { padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 },
+  badge: { padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 600 },
   barTrack: { height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden', marginBottom: 4 },
   barFill: { height: '100%', borderRadius: 4, transition: 'width .4s ease' },
   barLabels: {
@@ -347,6 +465,41 @@ const s = {
   },
   gpaLabel: { color: '#64748b', fontSize: 13 },
   gpaVal: { fontWeight: 800, fontSize: 16, color: '#1e293b' },
-  commentBox: { padding: '12px 14px', background: '#f8fafc', borderRadius: 8 },
-  commentText: { fontSize: 13, color: '#374151', lineHeight: 1.65, margin: 0 },
+  gradeTable: { display: 'flex', flexDirection: 'column', gap: 8 },
+  gradeRow: { display: 'grid', gridTemplateColumns: '36px 1fr 48px', gap: 10, alignItems: 'center' },
+  gradeLabel: { fontWeight: 700, fontSize: 13, color: 'var(--text)' },
+  gradeBarTrack: { height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' },
+  gradeBarFill: { height: '100%', borderRadius: 3, transition: 'width .4s' },
+  gradeScore: { fontSize: 12, fontWeight: 600, textAlign: 'right' },
+  workloadRow: {
+    display: 'flex', gap: 0, margin: '12px 0',
+    border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+    overflow: 'hidden',
+  },
+  workloadCell: {
+    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+    padding: '10px 6px', borderRight: '1px solid var(--border)',
+  },
+  workloadNum: { fontWeight: 700, fontSize: 16, color: 'var(--text)' },
+  workloadLabel: { fontSize: 10, color: 'var(--text-muted)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.05em' },
+  reqRow: { display: 'flex', flexDirection: 'column', gap: 8, margin: '10px 0' },
+  reqItem: { display: 'flex', gap: 10, alignItems: 'flex-start' },
+  reqLabel: {
+    fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+    flexShrink: 0, paddingTop: 2, width: 90,
+  },
+  reqText: { fontSize: 13, color: 'var(--text)', lineHeight: 1.5 },
+  topRow: {
+    display: 'grid',
+    gridTemplateColumns: '90px 1fr auto auto',
+    gap: 10, alignItems: 'center',
+    padding: '8px 10px', borderRadius: 6,
+    cursor: 'pointer',
+    transition: 'background .12s',
+  },
+  topCode:  { fontWeight: 700, color: '#2563eb', fontSize: 13 },
+  topTitle: { fontSize: 13, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  topStat:  { fontWeight: 700, fontSize: 13, color: '#1e293b', whiteSpace: 'nowrap' },
+  topCount: { color: '#94a3b8', fontSize: 12, whiteSpace: 'nowrap' },
 }

@@ -1,35 +1,61 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 
 const links = [
-  { to: '/',           label: 'Home' },
-  { to: '/timetable',  label: 'Timetable' },
-  { to: '/analysis',   label: 'Module Analysis' },
-  { to: '/timer',      label: 'Study Timer' },
-  { to: '/studyplan',  label: 'Study Plan' },
+  { to: '/',          label: 'Home' },
+  { to: '/timetable', label: 'Timetable' },
+  { to: '/analysis',  label: 'Module Analysis' },
+  { to: '/compare',   label: 'Compare' },
+  { to: '/timer',     label: 'Study Timer' },
+  { to: '/studyplan', label: 'Study Plan' },
 ]
 
 export default function Navbar() {
+  const [open, setOpen] = useState(false)
+
   return (
     <nav style={styles.nav}>
       <div style={styles.inner}>
         <span style={styles.brand}>NUSMods <span style={styles.accent}>Helper</span></span>
-        <div style={styles.links}>
+
+        {/* Desktop links */}
+        <div className="nav-links">
           {links.map(l => (
             <NavLink
               key={l.to}
               to={l.to}
               end={l.to === '/'}
-              style={({ isActive }) => ({
-                ...styles.link,
-                ...(isActive ? styles.linkActive : {}),
-              })}
+              style={({ isActive }) => ({ ...styles.link, ...(isActive ? styles.linkActive : {}) })}
             >
               {l.label}
             </NavLink>
           ))}
         </div>
-        <span style={styles.year}>AY2025/2026</span>
+
+        {/* Mobile hamburger */}
+        <button className="nav-burger" onClick={() => setOpen(o => !o)} aria-label="Menu">
+          <span style={{ ...styles.bar, transform: open ? 'rotate(45deg) translate(5px, 5px)' : 'none' }} />
+          <span style={{ ...styles.bar, opacity: open ? 0 : 1 }} />
+          <span style={{ ...styles.bar, transform: open ? 'rotate(-45deg) translate(5px, -5px)' : 'none' }} />
+        </button>
       </div>
+
+      {/* Mobile drawer */}
+      {open && (
+        <div style={styles.drawer}>
+          {links.map(l => (
+            <NavLink
+              key={l.to}
+              to={l.to}
+              end={l.to === '/'}
+              style={({ isActive }) => ({ ...styles.drawerLink, ...(isActive ? styles.drawerLinkActive : {}) })}
+              onClick={() => setOpen(false)}
+            >
+              {l.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
     </nav>
   )
 }
@@ -53,14 +79,30 @@ const styles = {
   },
   brand: { color: 'white', fontWeight: 700, fontSize: 18, whiteSpace: 'nowrap' },
   accent: { color: '#60a5fa' },
-  links: { display: 'flex', gap: 4, flex: 1 },
   link: {
     color: '#94a3b8',
-    padding: '6px 12px',
-    borderRadius: 6,
+    padding: '5px 11px',
+    borderRadius: 5,
     fontWeight: 500,
-    transition: 'color .15s, background .15s',
+    fontSize: 14,
+    transition: 'color .12s, background .12s',
   },
   linkActive: { color: 'white', background: 'rgba(255,255,255,.1)' },
-  year: { color: '#475569', fontSize: 12, whiteSpace: 'nowrap' },
+  bar: {
+    display: 'block', width: 22, height: 2,
+    background: '#94a3b8', borderRadius: 2,
+    transition: 'transform .2s, opacity .2s',
+  },
+  drawer: {
+    background: '#1e293b',
+    borderTop: '1px solid rgba(255,255,255,.08)',
+    display: 'flex', flexDirection: 'column',
+  },
+  drawerLink: {
+    padding: '14px 24px',
+    color: '#94a3b8', fontWeight: 500, fontSize: 15,
+    borderBottom: '1px solid rgba(255,255,255,.06)',
+    display: 'block',
+  },
+  drawerLinkActive: { color: 'white', background: 'rgba(255,255,255,.06)' },
 }

@@ -1,24 +1,27 @@
 import { useState, useEffect } from 'react'
-import { getLeaderboard, createGroup, joinGroup, getGroup } from '../../api.js'
+import { getLeaderboard, createGroup, joinGroup, getGroup, leaveGroup } from '../../api.js'
 
 const FACULTIES = ['', 'SOC', 'FOS', 'FOE', 'BIZ', 'LAW', 'MED', 'DEN', 'FASS', 'CDE', 'YST', 'SPH']
 
 function fmtH(s) { return s ? `${(s / 3600).toFixed(1)}h` : '0.0h' }
 
 export default function Leaderboard({ userId }) {
-  const [faculty, setFaculty]       = useState('')
-  const [board, setBoard]           = useState([])
-  const [groupCode, setGroupCode]   = useState('')
-  const [groupName, setGroupName]   = useState('')
-  const [myGroup, setMyGroup]       = useState(null)
-  const [inviteInput, setInviteInput] = useState('')
+  const [faculty, setFaculty] = useState('')
+  const [year,    setYear]    = useState('')
+  const [course,  setCourse]  = useState('')
+  const [board,   setBoard]   = useState([])
+  const [groupCode,    setGroupCode]    = useState('')
+  const [groupName,    setGroupName]    = useState('')
+  const [myGroup,      setMyGroup]      = useState(null)
+  const [inviteInput,  setInviteInput]  = useState('')
   const [msg, setMsg] = useState('')
 
-  function loadBoard(f) {
-    getLeaderboard(f).then(setBoard).catch(() => {})
+  function loadBoard(f, y, c) {
+    getLeaderboard(f || undefined, y ? parseInt(y) : undefined, c || undefined)
+      .then(setBoard).catch(() => {})
   }
 
-  useEffect(() => { loadBoard(faculty) }, [faculty])
+  useEffect(() => { loadBoard(faculty, year, course) }, [faculty, year, course])
 
   function handleCreateGroup() {
     if (!groupName.trim()) return
@@ -42,15 +45,34 @@ export default function Leaderboard({ userId }) {
     getGroup(code).then(setMyGroup).catch(() => {})
   }
 
+  function handleLeaveGroup() {
+    if (!window.confirm(`Leave "${myGroup.group_name}"?`)) return
+    leaveGroup(myGroup.invite_code, userId)
+      .then(() => { setMyGroup(null); setGroupCode(''); setMsg('') })
+      .catch(() => setMsg('Failed to leave group'))
+  }
+
   return (
     <div style={styles.wrapper}>
       {/* global leaderboard */}
       <div className="card">
-        <div style={styles.boardHeader}>
-          <h3 style={styles.title}>Weekly Leaderboard</h3>
-          <select value={faculty} onChange={e => setFaculty(e.target.value)} style={{ width: 120 }}>
-            {FACULTIES.map(f => <option key={f} value={f}>{f || 'All'}</option>)}
-          </select>
+        <div style={{ marginBottom: 12 }}>
+          <h3 style={{ ...styles.title, marginBottom: 10 }}>Weekly Leaderboard</h3>
+          <div style={styles.filterRow}>
+            <select value={faculty} onChange={e => setFaculty(e.target.value)} style={{ flex: 1 }}>
+              {FACULTIES.map(f => <option key={f} value={f}>{f || 'All faculties'}</option>)}
+            </select>
+            <select value={year} onChange={e => setYear(e.target.value)} style={{ flex: 1 }}>
+              <option value="">All years</option>
+              {[1,2,3,4,5].map(y => <option key={y} value={y}>Year {y}</option>)}
+            </select>
+            <input
+              value={course}
+              onChange={e => setCourse(e.target.value)}
+              placeholder="Filter by course…"
+              style={{ flex: 2 }}
+            />
+          </div>
         </div>
         <table style={styles.table}>
           <thead>
@@ -66,13 +88,13 @@ export default function Leaderboard({ userId }) {
               <tr><td colSpan={4} style={styles.empty}>No data yet — start studying!</td></tr>
             )}
             {board.map((u, i) => (
-              <tr key={u.user_id} style={{ ...styles.row, background: u.user_id === userId ? '#eff6ff' : 'transparent' }}>
-                <td style={styles.rank}>
-                  {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+              <tr key={u.user_id} style={{ ...styles.row, background: u.user_id === userId ? '#f0f5ff' : 'transparent' }}>
+                <td style={{ ...styles.rank, fontWeight: i < 3 ? 700 : 400 }}>
+                  {i + 1}
                 </td>
                 <td>{u.display_name}{u.user_id === userId ? ' (you)' : ''}</td>
                 <td style={{ color: '#94a3b8' }}>{u.faculty || '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, color: '#2563eb' }}>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
                   {fmtH(u.week_seconds)}
                 </td>
               </tr>
@@ -106,6 +128,13 @@ export default function Leaderboard({ userId }) {
             <div style={styles.groupInfo}>
               <span style={styles.groupName}>{myGroup.group_name}</span>
               <span style={styles.invCode}>Code: <b>{myGroup.invite_code}</b></span>
+              <button
+                className="btn-ghost"
+                onClick={handleLeaveGroup}
+                style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 10px', color: '#ef4444', borderColor: '#fecaca' }}
+              >
+                Leave
+              </button>
             </div>
             <table style={styles.table}>
               <thead>
@@ -113,10 +142,10 @@ export default function Leaderboard({ userId }) {
               </thead>
               <tbody>
                 {(myGroup.leaderboard || []).map((u, i) => (
-                  <tr key={u.user_id} style={{ ...styles.row, background: u.user_id === userId ? '#eff6ff' : 'transparent' }}>
+                  <tr key={u.user_id} style={{ ...styles.row, background: u.user_id === userId ? '#f0f5ff' : 'transparent' }}>
                     <td style={styles.rank}>{i + 1}</td>
                     <td>{u.display_name}{u.user_id === userId ? ' (you)' : ''}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#2563eb' }}>{fmtH(u.week_seconds)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>{fmtH(u.week_seconds)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -129,18 +158,19 @@ export default function Leaderboard({ userId }) {
 }
 
 const styles = {
-  wrapper: { display: 'flex', flexDirection: 'column', gap: 20 },
+  wrapper: { display: 'flex', flexDirection: 'column', gap: 16 },
   boardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  title: { fontWeight: 700, fontSize: 16, marginBottom: 12 },
+  filterRow: { display: 'flex', gap: 8, alignItems: 'center' },
+  title: { fontWeight: 700, fontSize: 15, marginBottom: 12, color: 'var(--text)' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: { color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0' },
-  row: { borderBottom: '1px solid #f1f5f9' },
-  rank: { fontSize: 16, padding: '6px 0' },
-  empty: { textAlign: 'center', color: '#94a3b8', padding: 20 },
+  th: { color: 'var(--text-subtle)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', paddingBottom: 6 },
+  row: { borderBottom: '1px solid var(--border-light)' },
+  rank: { fontSize: 13, padding: '7px 0', color: 'var(--text-muted)' },
+  empty: { textAlign: 'center', color: 'var(--text-subtle)', padding: 20, fontSize: 13 },
   groupActions: { display: 'flex', flexDirection: 'column', gap: 10 },
   groupRow: { display: 'flex', gap: 8 },
-  msg: { color: '#2563eb', fontSize: 13, fontWeight: 600 },
+  msg: { color: 'var(--primary)', fontSize: 13 },
   groupInfo: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 },
-  groupName: { fontWeight: 700, fontSize: 15 },
-  invCode: { fontSize: 13, color: '#64748b' },
+  groupName: { fontWeight: 700, fontSize: 14 },
+  invCode: { fontSize: 12, color: 'var(--text-muted)' },
 }

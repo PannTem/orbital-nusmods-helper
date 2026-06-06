@@ -59,8 +59,24 @@ export const startSession = (userId) => post('/timer/sessions', { user_id: userI
 export const stopSession = (sessionId, endTime) =>
   put(`/timer/sessions/${sessionId}`, { end_time: endTime })
 export const getTimerStats = (userId) => get(`/timer/stats/${userId}`)
-export const getLeaderboard = (faculty) =>
-  get(`/timer/leaderboard${faculty ? `?faculty=${encodeURIComponent(faculty)}` : ''}`)
+export const getSessionHistory = (userId, days = 7) => get(`/timer/history/${userId}?days=${days}`)
+
+export function exportTimetableIcal(userId, sem = 1) {
+  const a = document.createElement('a')
+  a.href = `${BASE}/timetable/${userId}/export.ics?sem=${sem}`
+  a.download = `timetable-sem${sem}.ics`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+export const getLeaderboard = (faculty, year, course) => {
+  const p = new URLSearchParams()
+  if (faculty) p.set('faculty', faculty)
+  if (year)    p.set('year',    String(year))
+  if (course)  p.set('course',  course)
+  const qs = p.toString()
+  return get(`/timer/leaderboard${qs ? `?${qs}` : ''}`)
+}
 
 // ── study groups ──────────────────────────────────────────────────────────────
 
@@ -69,12 +85,19 @@ export const createGroup = (groupName, userId) =>
 export const joinGroup = (inviteCode, userId) =>
   post(`/groups/${inviteCode}/join`, { user_id: userId })
 export const getGroup = (inviteCode) => get(`/groups/${inviteCode}`)
+export const leaveGroup = (inviteCode, userId) =>
+  del(`/groups/${inviteCode}/members/${userId}`)
 
 // ── timetable generation & sharing ───────────────────────────────────────────
 
 export const generateTimetable   = (body)  => post('/timetable/generate', body)
 export const shareTimetable      = (body)  => post('/timetable/share', body)
 export const getSharedTimetable  = (token) => get(`/timetable/shared/${token}`)
+
+// ── module discovery ──────────────────────────────────────────────────────────
+
+export const getEasiestModules    = (minComments = 5) => get(`/difficulty/${minComments}`)
+export const getMostRecommended   = (minComments = 5) => get(`/recommendation/${minComments}`)
 
 // ── study plan ────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,6 @@
 import re
+import json
+import threading
 import nlp
 import database_access
 import api
@@ -6,6 +8,10 @@ import sqlite3
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+
+# Serialize NLP inference: BART is CPU-heavy and can OOM under concurrent load.
+# Cached lookups bypass this lock entirely; only fresh analyses are serialised.
+_nlp_lock = threading.Semaphore(1)
 
 import timetable_routes
 import timer_routes
@@ -41,15 +47,14 @@ def return_formatter(module_code: str,
                      course_data: dict,
                      difficulty_score: float,
                      recommend_score: float,
-                     top_positive_comment_message: str,
-                     top_positive_comment_likes: int,
-                     top_neutral_comment_message: str,
-                     top_neutral_comment_likes: int,
-                     top_negative_comment_message: str,
-                     top_negative_comment_likes: int,
                      comment_count: int,
                      expected_gpa: float,
-                     actual_gpa: float):
+                     actual_gpa: float,
+                     summary: str,
+                     grade_thresholds: dict,
+                     workload: list,
+                     prerequisite: str,
+                     preclusion: str):
     return {
         "module": module_code,
         "title": course_data.get("title"),
@@ -58,16 +63,15 @@ def return_formatter(module_code: str,
         "department": course_data.get("department"),
         "difficulty_score": difficulty_score,
         "recommend_score": recommend_score,
-        "top_positive_comment_message": top_positive_comment_message if top_positive_comment_likes >= 0 else None,
-        "top_positive_comment_likes": top_positive_comment_likes if top_positive_comment_likes >= 0 else None,
-        "top_neutral_comment_message": top_neutral_comment_message if top_neutral_comment_likes >= 0 else None,
-        "top_neutral_comment_likes": top_neutral_comment_likes if top_neutral_comment_likes >= 0 else None,
-        "top_negative_comment_message": top_negative_comment_message if top_negative_comment_likes >= 0 else None,
-        "top_negative_comment_likes": top_negative_comment_likes if top_negative_comment_likes >= 0 else None,
         "comment_count": comment_count,
         "expected_gpa": expected_gpa,
-        "actual_gpa": actual_gpa
-        }
+        "actual_gpa": actual_gpa,
+        "summary": summary,
+        "grade_thresholds": grade_thresholds,
+        "workload": workload,
+        "prerequisite": prerequisite,
+        "preclusion": preclusion,
+    }
 
 @app.get("/course/{module_code}")
 def get_course(module_code: str, conn: sqlite3.Connection = Depends(get_conn)):
@@ -79,7 +83,8 @@ def get_course(module_code: str, conn: sqlite3.Connection = Depends(get_conn)):
 
     cached = database_access.get_cached_module(module_code, conn)
 
-    if cached:
+    # Only use cache if it already has the summary field (new schema)
+    if cached and cached.get("analysis_version", 0) >= 1:
         print("Using cached result...")
         return {
             "module": module_code,
@@ -89,133 +94,174 @@ def get_course(module_code: str, conn: sqlite3.Connection = Depends(get_conn)):
             "department": cached["department"],
             "difficulty_score": cached["difficulty_score"],
             "recommend_score": cached["recommend_score"],
-            "top_positive_comment_message": cached["top_positive_comment_message"],
-            "top_positive_comment_likes": cached["top_positive_comment_likes"],
-            "top_neutral_comment_message": cached["top_neutral_comment_message"],
-            "top_neutral_comment_likes": cached["top_neutral_comment_likes"],
-            "top_negative_comment_message": cached["top_negative_comment_message"],
-            "top_negative_comment_likes": cached["top_negative_comment_likes"],
             "comment_count": cached["comment_count"],
             "expected_gpa": cached["expected_gpa"],
-            "actual_gpa": cached["actual_gpa"]
+            "actual_gpa": cached["actual_gpa"],
+            "summary": cached["summary"],
+            "grade_thresholds": json.loads(cached["grade_thresholds_json"]) if cached.get("grade_thresholds_json") else None,
+            "workload": json.loads(cached["workload_json"]) if cached.get("workload_json") else None,
+            "prerequisite": cached.get("prerequisite"),
+            "preclusion": cached.get("preclusion"),
         }
     
     #-------------------------------------------------------------------------------------
 
-    #Data is not yet cached. Fetch from API, throw it thru NLP pipeline, then store in DB
+    # Data is not yet cached — run NLP pipeline.
+    # Acquire the semaphore (non-blocking); return 503 if another analysis is in progress.
+    if not _nlp_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=503,
+            detail="The NLP analyser is busy processing another module. "
+                   "Please retry in a few seconds.",
+        )
 
-    #nusmods API Fetch
-    course_data = api.fetch_nusmods(module_code)
+    try:
+        # Re-check cache now that we hold the lock (another request may have just populated it)
+        cached = database_access.get_cached_module(module_code, conn)
+        if cached and cached.get("analysis_version", 0) >= 1:
+            return {
+                "module": module_code,
+                "title": cached["title"],
+                "description": cached["description"],
+                "module_credits": cached["module_credits"],
+                "department": cached["department"],
+                "difficulty_score": cached["difficulty_score"],
+                "recommend_score": cached["recommend_score"],
+                "comment_count": cached["comment_count"],
+                "expected_gpa": cached["expected_gpa"],
+                "actual_gpa": cached["actual_gpa"],
+                "summary": cached["summary"],
+                "grade_thresholds": json.loads(cached["grade_thresholds_json"]) if cached.get("grade_thresholds_json") else None,
+                "workload": json.loads(cached["workload_json"]) if cached.get("workload_json") else None,
+                "prerequisite": cached.get("prerequisite"),
+                "preclusion": cached.get("preclusion"),
+            }
 
-    if course_data is None:
-        raise HTTPException(status_code=404, detail="Invalid module code")
+        #nusmods API Fetch
+        course_data = api.fetch_nusmods(module_code)
 
-    #Disqus Fetch
-    thread_id = api.get_disqus_thread_id(module_code)
+        if course_data is None:
+            raise HTTPException(status_code=404, detail="Invalid module code")
 
-    comments = []
+        #Disqus Fetch
+        thread_id = api.get_disqus_thread_id(module_code)
 
-    if thread_id:
-        comments = api.fetch_disqus_comments(thread_id)
+        comments = []
 
-    #No comments case
-    if not comments:
-       comments = []
+        if thread_id:
+            comments = api.fetch_disqus_comments(thread_id)
 
+        if not comments:
+            comments = []
 
-    #--------------------------------------------------------------------------------------
-    #SENTIMENT ANALYSIS
-    #--------------------------------------------------------------------------------------
-    curr_max_positive_comment = {"message": "", "sentiment": "positive", "likes": -1}
-    curr_max_neutral_comment = {"message": "", "sentiment": "neutral", "likes": -1}
-    curr_max_negative_comment = {"message": "", "sentiment": "negative", "likes": -1}
+        #--------------------------------------------------------------------------------------
+        #SENTIMENT ANALYSIS
+        #--------------------------------------------------------------------------------------
+        curr_max_positive_comment = {"message": "", "sentiment": "positive", "likes": -1}
+        curr_max_neutral_comment = {"message": "", "sentiment": "neutral", "likes": -1}
+        curr_max_negative_comment = {"message": "", "sentiment": "negative", "likes": -1}
 
-    for comment in comments:
-        comment["sentiment"] = nlp.analyze_sentiment(comment)
-        if comment["sentiment"] == "positive":
-            if comment["likes"] > curr_max_positive_comment["likes"]:
-                curr_max_positive_comment = comment.copy()
-        elif comment["sentiment"] == "neutral":
-            if comment["likes"] > curr_max_neutral_comment["likes"]:
-                curr_max_neutral_comment = comment.copy()
-        elif comment["sentiment"] == "negative":
-            if comment["likes"] > curr_max_negative_comment["likes"]:
-                curr_max_negative_comment = comment.copy()
+        cleaned_texts = []
+        for comment in comments:
+            comment["sentiment"] = nlp.analyze_sentiment(comment)
+            cleaned = nlp.clean_comment_message(comment)
+            comment["_cleaned"] = cleaned
+            cleaned_texts.append(cleaned)
+            if comment["sentiment"] == "positive":
+                if comment["likes"] > curr_max_positive_comment["likes"]:
+                    curr_max_positive_comment = comment.copy()
+            elif comment["sentiment"] == "neutral":
+                if comment["likes"] > curr_max_neutral_comment["likes"]:
+                    curr_max_neutral_comment = comment.copy()
+            elif comment["sentiment"] == "negative":
+                if comment["likes"] > curr_max_negative_comment["likes"]:
+                    curr_max_negative_comment = comment.copy()
 
-    #--------------------------------------------------------------------------------------
-    #DIFFICULTY AND RECOMMENDATION ANALYSIS
-    #--------------------------------------------------------------------------------------
-    top_comments = sorted(comments, key=lambda c: c["likes"], reverse=True)
-    top_comments = top_comments[:30]  # Only analyze top 30 comments because BART is computationally expensive
-    if top_comments:
-        difficulty_score = 0.0
-        recommend_score = 0.0
-        for comment in top_comments:
-            result = nlp.analyze_diff_recc(comment)
-            difficulty_score += float(result["difficulty_score"])
-            recommend_score += float(result["recommend_score"])
-        difficulty_score /= len(top_comments)
-        recommend_score /= len(top_comments)
-    else:
-        difficulty_score = None
-        recommend_score = None
+        #--------------------------------------------------------------------------------------
+        #DIFFICULTY AND RECOMMENDATION ANALYSIS
+        #--------------------------------------------------------------------------------------
+        top_comments = sorted(comments, key=lambda c: c["likes"], reverse=True)
+        top_comments = top_comments[:30]  # Only analyze top 30 comments because BART is computationally expensive
+        if top_comments:
+            difficulty_score = 0.0
+            recommend_score = 0.0
+            for comment in top_comments:
+                result = nlp.analyze_diff_recc(comment)
+                difficulty_score += float(result["difficulty_score"])
+                recommend_score += float(result["recommend_score"])
+            difficulty_score /= len(top_comments)
+            recommend_score /= len(top_comments)
+        else:
+            difficulty_score = None
+            recommend_score = None
 
-    #---------------------------------------------------------------------------------------
-    # GRADE ANALYSIS
-    #---------------------------------------------------------------------------------------
-    total_expected_gpa = 0.0
-    total_expected_gpa_count = 0
-    for comment in comments:
-        expected_gpa = nlp.extract_expected_gpa(comment)
-        if expected_gpa is not None: #gpa = 0.0 is somehow still valid
-            total_expected_gpa += expected_gpa
-            total_expected_gpa_count += 1
-    expected_gpa = total_expected_gpa / total_expected_gpa_count if total_expected_gpa_count > 0 else None
+        #---------------------------------------------------------------------------------------
+        # GRADE ANALYSIS
+        #---------------------------------------------------------------------------------------
+        total_expected_gpa = 0.0
+        total_expected_gpa_count = 0
+        for comment in comments:
+            expected_gpa = nlp.extract_expected_gpa(comment)
+            if expected_gpa is not None:
+                total_expected_gpa += expected_gpa
+                total_expected_gpa_count += 1
+        expected_gpa = total_expected_gpa / total_expected_gpa_count if total_expected_gpa_count > 0 else None
 
-    total_actual_gpa = 0.0
-    total_actual_gpa_count = 0
-    for comment in comments:
-        actual_gpa = nlp.extract_actual_gpa(comment)
-        if actual_gpa is not None: #gpa = 0.0 is valid
-            total_actual_gpa += actual_gpa
-            total_actual_gpa_count += 1
-    actual_gpa = total_actual_gpa / total_actual_gpa_count if total_actual_gpa_count > 0 else None
+        total_actual_gpa = 0.0
+        total_actual_gpa_count = 0
+        for comment in comments:
+            actual_gpa = nlp.extract_actual_gpa(comment)
+            if actual_gpa is not None:
+                total_actual_gpa += actual_gpa
+                total_actual_gpa_count += 1
+        actual_gpa = total_actual_gpa / total_actual_gpa_count if total_actual_gpa_count > 0 else None
 
-    #---------------------------------------------------------------------------------------
-    #SAVE TO DB
-    #---------------------------------------------------------------------------------------
-    database_access.save_module_data(
-        module_code,
-        course_data.get("title"),
-        course_data.get("description"),
-        course_data.get("moduleCredit"),
-        course_data.get("department"),
-        difficulty_score,
-        recommend_score,
-        curr_max_positive_comment,
-        curr_max_neutral_comment,
-        curr_max_negative_comment,
-        len(comments),
-        expected_gpa,
-        actual_gpa,
-        conn
-    )
+        #---------------------------------------------------------------------------------------
+        # SUMMARY, GRADE THRESHOLDS, WORKLOAD, PREREQUISITES
+        #---------------------------------------------------------------------------------------
+        summary = nlp.extractive_summarize(cleaned_texts) if cleaned_texts else None
+        grade_thresholds = nlp.extract_grade_thresholds(cleaned_texts) if cleaned_texts else None
+        grade_thresholds_json = json.dumps(grade_thresholds) if grade_thresholds else None
 
-    #Return as python dictionary object
-    return return_formatter(module_code,
-                            course_data,
-                            difficulty_score,
-                            recommend_score,
-                            curr_max_positive_comment["message"],
-                            curr_max_positive_comment["likes"],
-                            curr_max_neutral_comment["message"],
-                            curr_max_neutral_comment["likes"],
-                            curr_max_negative_comment["message"],
-                            curr_max_negative_comment["likes"],
-                            len(comments),
-                            expected_gpa,
-                            actual_gpa
-                            )
+        workload     = course_data.get("workload")
+        prerequisite = course_data.get("prerequisite")
+        preclusion   = course_data.get("preclusion")
+        workload_json = json.dumps(workload) if workload else None
+
+        #---------------------------------------------------------------------------------------
+        #SAVE TO DB
+        #---------------------------------------------------------------------------------------
+        database_access.save_module_data(
+            module_code,
+            course_data.get("title"),
+            course_data.get("description"),
+            course_data.get("moduleCredit"),
+            course_data.get("department"),
+            difficulty_score,
+            recommend_score,
+            curr_max_positive_comment,
+            curr_max_neutral_comment,
+            curr_max_negative_comment,
+            len(comments),
+            expected_gpa,
+            actual_gpa,
+            summary,
+            grade_thresholds_json,
+            workload_json,
+            prerequisite,
+            preclusion,
+            conn
+        )
+
+        return return_formatter(
+            module_code, course_data,
+            difficulty_score, recommend_score,
+            len(comments), expected_gpa, actual_gpa,
+            summary, grade_thresholds,
+            workload, prerequisite, preclusion,
+        )
+    finally:
+        _nlp_lock.release()
 
 
 

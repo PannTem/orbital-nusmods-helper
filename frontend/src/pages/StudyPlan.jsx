@@ -61,13 +61,13 @@ export default function StudyPlan() {
     <div className="page">
       <div style={styles.topBar}>
         <h1 className="page-title" style={{ marginBottom: 0 }}>Study Plan</h1>
-        <div style={styles.dueChip}>
-          {dueCards.length} card{dueCards.length !== 1 ? 's' : ''} due today
-        </div>
+        <span style={styles.dueChip}>
+          {dueCards.length} due today
+        </span>
         {streak > 0 && (
-          <div style={styles.streakChip} title="Consecutive days of review">
-            🔥 {streak}-day streak
-          </div>
+          <span style={styles.streakChip} title="Consecutive days of review">
+            {streak}-day streak
+          </span>
         )}
       </div>
 
@@ -111,7 +111,7 @@ export default function StudyPlan() {
                   onClick={() => exportStudyPlan(userId)}
                   style={{ fontSize: 13, padding: '7px 14px' }}
                 >
-                  📅 Export to Calendar (.ics)
+                  Export .ics
                 </button>
               </div>
             )}
@@ -141,9 +141,8 @@ export default function StudyPlan() {
                         <div style={styles.schedTopic}>{c.topic}</div>
                         <div style={{
                           ...styles.schedDate,
-                          color: overdue ? '#ef4444' : dueToday ? '#f59e0b' : '#22c55e',
+                          color: overdue ? '#dc2626' : dueToday ? '#d97706' : '#16a34a',
                         }}>
-                          {overdue ? '⚠ ' : dueToday ? '📅 ' : '✓ '}
                           {c.next_review_date}
                         </div>
                         <div style={styles.schedInterval}>Every {c.interval_days}d</div>
@@ -153,7 +152,7 @@ export default function StudyPlan() {
                           style={styles.trashBtn}
                           title="Delete this card"
                         >
-                          🗑
+                          ×
                         </button>
                       </div>
                     )
@@ -171,23 +170,23 @@ export default function StudyPlan() {
 const styles = {
   topBar: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' },
   dueChip: {
-    background: '#fef3c7', color: '#92400e',
-    borderRadius: 20, padding: '4px 14px',
-    fontWeight: 600, fontSize: 13,
+    color: 'var(--text-muted)',
+    fontSize: 13,
+    fontWeight: 500,
   },
   streakChip: {
-    background: '#fff7ed', color: '#c2410c',
-    borderRadius: 20, padding: '4px 14px',
-    fontWeight: 600, fontSize: 13,
+    color: 'var(--text-muted)',
+    fontSize: 13,
+    fontWeight: 500,
   },
-  tabs: { display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #e2e8f0', paddingBottom: 0 },
+  tabs: { display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 },
   tab: {
-    padding: '10px 20px', background: 'none', border: 'none',
-    borderBottom: '3px solid transparent', borderRadius: 0,
-    color: '#64748b', fontWeight: 500, cursor: 'pointer',
-    fontSize: 14, marginBottom: -1,
+    padding: '9px 18px', background: 'none', border: 'none',
+    borderBottom: '2px solid transparent', borderRadius: 0,
+    color: 'var(--text-muted)', fontWeight: 500, cursor: 'pointer',
+    fontSize: 13, marginBottom: -1,
   },
-  tabActive: { color: '#2563eb', borderBottom: '3px solid #2563eb' },
+  tabActive: { color: 'var(--primary)', borderBottom: '2px solid var(--primary)' },
   content: { maxWidth: 680, margin: '0 auto' },
   empty: { color: '#94a3b8', textAlign: 'center', padding: 40 },
   examHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
@@ -208,6 +207,6 @@ const styles = {
   schedReps:     { color: '#94a3b8', fontSize: 12, textAlign: 'right' },
   trashBtn: {
     background: 'none', border: 'none', cursor: 'pointer',
-    fontSize: 14, opacity: 0.45, padding: '2px 4px', borderRadius: 4,
+    fontSize: 16, color: 'var(--text-subtle)', padding: '2px 4px', borderRadius: 4,
   },
 }

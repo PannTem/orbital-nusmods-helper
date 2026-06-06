@@ -41,14 +41,13 @@ export default function SlotChooser({ moduleCode, lessonType, slots, selectedCla
               onClick={() => { onSelect(moduleCode, lessonType, c.classNo); setOpen(false) }}
               style={{
                 ...styles.option,
-                background: c.classNo === selectedClassNo ? '#dbeafe' : 'white',
+                background: c.classNo === selectedClassNo ? '#eff6ff' : 'white',
                 fontWeight: c.classNo === selectedClassNo ? 600 : 400,
               }}
             >
               <span style={styles.classNo}>[{c.classNo}]</span>
               <span>{c.day.slice(0,3)} {formatTime(c.startTime)}–{formatTime(c.endTime)}</span>
               <span style={styles.venue}>{c.venue}</span>
-              {c.size && <span style={styles.size}>Cap {c.size}</span>}
             </div>
           ))}
         </div>
@@ -64,34 +63,33 @@ const styles = {
     alignItems: 'center',
     gap: 8,
     padding: '6px 10px',
-    background: '#f8fafc',
-    borderRadius: 6,
+    background: 'var(--bg)',
+    borderRadius: 'var(--radius)',
     cursor: 'pointer',
     fontSize: 12,
     userSelect: 'none',
   },
-  lessonType: { fontWeight: 600, color: '#374151', minWidth: 80 },
-  current: { color: '#64748b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  chevron: { color: '#94a3b8', fontSize: 10 },
+  lessonType: { fontWeight: 600, color: 'var(--text)', minWidth: 80 },
+  current: { color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  chevron: { color: 'var(--text-subtle)', fontSize: 10 },
   dropdown: {
-    border: '1px solid #e2e8f0',
-    borderRadius: 6,
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
     overflow: 'hidden',
     marginTop: 2,
-    boxShadow: '0 4px 6px rgba(0,0,0,.06)',
   },
   option: {
     display: 'grid',
-    gridTemplateColumns: '50px 1fr auto auto',
+    gridTemplateColumns: '50px 1fr auto',
     gap: 8,
     padding: '8px 10px',
     cursor: 'pointer',
     fontSize: 12,
     alignItems: 'center',
-    borderBottom: '1px solid #f1f5f9',
+    borderBottom: '1px solid var(--border-light)',
     transition: 'background .1s',
   },
-  classNo: { fontWeight: 600, color: '#2563eb' },
-  venue: { color: '#64748b' },
-  size: { color: '#94a3b8', fontSize: 11 },
+  classNo: { fontWeight: 600, color: 'var(--primary)' },
+  venue: { color: 'var(--text-muted)' },
+  size: { color: 'var(--text-subtle)', fontSize: 11 },
 }

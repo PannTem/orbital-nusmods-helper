@@ -1,8 +1,8 @@
-## NUSMods Helper — Milestone 1 Readme
+## NUSMods Helper — Milestone 2 Readme
 
 Team: Papangkorn & Piyaphat  
 Level: Apollo  
-Period covered: 13 May 2026 — 1 June 2026
+Period covered: 13 May 2026 — 1 July 2026
 
 ## Prerequisites
 
@@ -29,22 +29,20 @@ I then want to use that information to choose appropriate modules and automatica
 
 The current build implements four feature groups. Each section below explains what the feature does and which files implement it.
 
-**1. Module Review Aggregator** — `backend/main.py`, `backend/nlp.py`, `backend/api.py`  
-Enter a module code (e.g. `CS2040S`) on the Home page. The backend fetches the module description from the NUSMods API and student reviews from Disqus, runs three NLP layers over the comments (VADER sentiment, BART zero-shot classification for difficulty and recommendation, regex grade extraction), and returns a one-screen summary: difficulty score, recommendation score, expected/actual GPA averages, and the most-liked positive, neutral, and negative comments. Results are cached in SQLite so repeat lookups are instant.
+**1. Module Analysis** — `backend/main.py`, `backend/nlp.py`, `backend/api.py`, `frontend/src/pages/ModuleAnalysis.jsx`  
+Enter a module code (e.g. `CS2040S`) in the Module Analysis page. The backend fetches the module description from the NUSMods API and student reviews from Disqus, then runs three NLP layers: VADER sentiment analysis, BART zero-shot classification for difficulty (1–5) and recommendation (0–1), and regex grade extraction. Returns a one-screen summary — difficulty score, recommendation %, expected/actual GPA averages, the most-liked positive/neutral/negative comments, and a flag when no reviews are found. Results are cached in SQLite; repeat lookups are instant. A Top Modules discovery panel lists the easiest and most-recommended modules from the cache. NLP inference is serialised via a threading semaphore to prevent OOM under concurrent load; the API returns HTTP 503 with a friendly message if a request arrives while another is being processed.
 
-**2. Conflict-Aware Timetable Builder** — `backend/timetable_routes.py`, `frontend/src/pages/Timetable.jsx`, `frontend/src/components/timetable/`  
-Search for modules, pick a lesson type, and choose a class slot. The grid renders Monday–Friday from 08:00 to 22:00 in 30-minute rows and prevents overlapping slots. Slot selections are persisted per user in `timetable_slots`.
+**2. Conflict-Aware Timetable Builder** — `backend/timetable_routes.py`, `backend/timetable_generator.py`, `frontend/src/pages/Timetable.jsx`, `frontend/src/components/timetable/`  
+Search for modules, pick a lesson type, and choose a class slot. The grid renders Monday–Friday from 08:00 to 22:00 in 30-minute rows and prevents conflicting slots. **Auto-Generate** runs a backtracking algorithm across all added modules, scores up to 5 conflict-free timetables by five weighted preferences (latest start, earliest end, lunch break, compact days, minimal gaps), and lets you apply the result in one click. **Share** creates a 30-day shareable link that renders a read-only timetable view for anyone with the URL. The timetable can also be printed via the 🖨 Print button. Slot selections are persisted per user in `timetable_slots`.
 
 **3. Study Timer with Leaderboard** — `backend/timer_routes.py`, `frontend/src/pages/Timer.jsx`, `frontend/src/components/timer/`  
 Start and stop a session; the backend computes duration server-side from ISO timestamps to avoid client clock skew. A weekly leaderboard (`GET /timer/leaderboard`) ranks users by study time, optionally filtered by faculty. Users can also create or join study groups via a six-character invite code.
 
 **4. Spaced-Repetition Study Plan** — `backend/studyplan_routes.py`, `backend/sm2.py`, `frontend/src/pages/StudyPlan.jsx`, `frontend/src/components/studyplan/`  
-Submit an exam, list its topics, and the backend creates one SM-2 card per topic. Each day `GET /studyplan/{user_id}/today` returns all cards due. The student rates recall 0–5; topics they know drift to reviews every few weeks while difficult topics stay daily.
+Submit an exam, list its topics, and the backend creates one SM-2 card per topic. Each day `GET /studyplan/{user_id}/today` returns all cards due. The student rates recall 0–5; topics they know drift to reviews every few weeks while difficult topics stay daily. A 🔥 streak counter tracks consecutive days of review. Individual cards and entire exams can be deleted. The full schedule exports to `.ics` (RFC 5545) for import into any calendar app.
 
 **Anonymous identity** — `frontend/src/App.jsx`, `backend/timer_routes.py`  
 There is no login screen. On first visit, `crypto.randomUUID()` mints a UUID, stores it in `localStorage`, and silently registers it with `POST /users`. Subsequent visits read the same UUID, giving each user persistent identity across sessions without an account. The user can set a display name, faculty, year, and course via `PUT /users/{user_id}` — these surface on the leaderboard.
-
-> Features yet to be implemented in later milestones: backtracking-based timetable optimisation (search for the best timetable across a set of modules by user-supplied preferences), richer review aggregation (topic clustering across modules), and friend-only leaderboards. Buttons for the timetable optimiser are present and show an "under development" message when clicked.
 
 ---
 
@@ -101,10 +99,10 @@ Open `http://localhost:5173`. The frontend proxies `/api` to the backend, so bot
 
 ## User Guide
 
-1. **Look up a module.** Open the Home page, type a code like `CS2040S`, hit search. You'll see difficulty (1–5), recommendation (0–1), expected/actual GPA, and three representative reviews. First lookup of a module takes 30–60 seconds; cached lookups are instant.
-2. **Build a timetable.** Go to Timetable, search for a module, click a lesson type, pick a class. The grid updates. Add more modules; the picker prevents conflicts.
+1. **Look up a module.** Go to Module Analysis, type a code like `CS2040S`, hit Analyze. You'll see difficulty (1–5), recommendation %, expected/actual GPA, and three representative reviews. First lookup takes 30–60 s while BART runs; cached lookups are instant. The Top Modules panel at the top shows the easiest and most-recommended modules from the cache — click any row to analyse it directly.
+2. **Build a timetable.** Go to Timetable, search for a module, click a lesson type, pick a class. Add more modules; the grid prevents conflicts. Click **✨ Auto-Generate** to have the backtracking optimizer find the top 5 timetables for your preferences; click Apply on any result. Click **🔗 Share** to get a shareable link. Click **🖨 Print** to print a clean copy.
 3. **Start a study session.** Go to Timer, click Start. Stop when done. Visit the Leaderboard tab to see where you rank this week.
-4. **Plan for an exam.** Go to Study Plan, enter the module code, exam date, and a list of topics. Each day, return and review whichever cards are due.
+4. **Plan for an exam.** Go to Study Plan, enter the module code, exam date, and a list of topics. Each day, return and review whichever cards are due. Build a streak to keep motivation up. Export to `.ics` to add all review dates to your calendar.
 
 ---
 
@@ -131,7 +129,7 @@ Open `http://localhost:5173`. The frontend proxies `/api` to the backend, so bot
 
 **Backend (FastAPI).** `main.py` registers three routers (`timetable_routes`, `timer_routes`, `studyplan_routes`) and the module-lookup endpoint. A shared `get_conn()` dependency yields a SQLite connection per request and closes it in `finally`, guaranteeing no leaked connections.
 
-**Data (SQLite, `database/modules.db`).** Six tables: `module_scores` (NLP cache), `users`, `timetable_slots`, `study_sessions`, `study_groups` + `study_group_members`, and `study_cards`. Schema lives in `database_access.init_db()` using `CREATE TABLE IF NOT EXISTS`, safe to run on every startup.
+**Data (SQLite, `database/modules.db`).** Seven tables: `module_scores` (NLP cache), `users` (with `review_streak` + `last_review_date` columns), `timetable_slots`, `timetable_shares` (shareable snapshots, 30-day TTL), `study_sessions`, `study_groups` + `study_group_members`, and `study_cards`. Schema lives in `database_access.init_db()` using `CREATE TABLE IF NOT EXISTS`, safe to run on every startup.
 
 ---
 
@@ -207,7 +205,10 @@ The full sprint-by-sprint log is in `docs/project-log.md` (link will be added wh
 
 - **Week 1 (13–19 May):** project proposal, repo bootstrap, NUSMods + Disqus API exploration, sentiment pipeline (VADER) prototyped.
 - **Week 2 (20–26 May):** BART zero-shot integration, grade-extraction regex, SQLite schema and caching layer, FastAPI router split.
-- **Week 3 (27 May – 1 June):** React frontend, timetable grid, timer + leaderboard, SM-2 study planner, anonymous identity via `localStorage`, README and Milestone 1 document.
+- **Week 3 (27 May – 1 June):** React frontend, timetable grid, timer + leaderboard, SM-2 study planner, anonymous identity via `localStorage`, Milestone 1 document.
+- **Week 4 (2–8 June):** Module Analysis page (NLP pipeline surfaced as a dedicated React page with autocomplete search), Top Modules discovery panel, no-reviews message, responsive grids.
+- **Week 5 (9–15 June):** Backtracking timetable auto-generator (`timetable_generator.py`), preference sliders, Generate modal with apply flow, timetable share links with 30-day SQLite TTL, shared timetable read-only view.
+- **Week 6 (16–22 June):** Study plan: streak tracking, per-card and per-exam deletion, `.ics` export. NLP rate-limiting semaphore (HTTP 503 on contention). Print support for timetable. `DISQUS_API_KEY` graceful fallback. `.env.example` created. Milestone 2 document.
 
 ---
 

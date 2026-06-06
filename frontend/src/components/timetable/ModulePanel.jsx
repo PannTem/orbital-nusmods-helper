@@ -2,6 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { searchModules, getModuleSlots } from '../../api.js'
 import SlotChooser from './SlotChooser.jsx'
 
+function fetchSlotsFor(codes, sem, setter) {
+  codes.forEach(code => {
+    getModuleSlots(code, sem)
+      .then(data => setter(prev => ({ ...prev, [code]: data.by_lesson_type })))
+      .catch(() => {})
+  })
+}
+
 const PALETTE = [
   '#3b82f6','#10b981','#f59e0b','#8b5cf6',
   '#ef4444','#06b6d4','#f97316','#6366f1',
@@ -14,17 +22,21 @@ export default function ModulePanel({ sem, selections, onSlotChange, onRemoveMod
   const [loading, setLoading] = useState(false)
   const [moduleSlots, setModuleSlots] = useState({})  // { code: { by_lesson_type } }
   const debounce = useRef(null)
+  const prevSem   = useRef(sem)
 
-  // Fetch slot data for all selected modules
   const selectedCodes = Object.keys(selections)
+
+  // Fetch slot data for all selected modules; invalidate cache when sem changes
   useEffect(() => {
-    selectedCodes.forEach(code => {
-      if (!moduleSlots[code]) {
-        getModuleSlots(code, sem)
-          .then(data => setModuleSlots(prev => ({ ...prev, [code]: data.by_lesson_type })))
-          .catch(() => {})
-      }
-    })
+    const semChanged = prevSem.current !== sem
+    if (semChanged) {
+      prevSem.current = sem
+      setModuleSlots({})
+      fetchSlotsFor(selectedCodes, sem, setModuleSlots)
+    } else {
+      const missing = selectedCodes.filter(c => !moduleSlots[c])
+      fetchSlotsFor(missing, sem, setModuleSlots)
+    }
   }, [selectedCodes.join(','), sem])
 
   // Debounced search

@@ -12,7 +12,7 @@ NUSMODS_BASE = "https://api.nusmods.com/v2"
 _module_list: list = []
 _module_list_fetched_at: float = 0
 
-DISQUS_API_KEY = os.environ["DISQUS_API_KEY"]
+DISQUS_API_KEY = os.environ.get("DISQUS_API_KEY", "")
 DISQUS_FORUM = "nusmods-prod"
 
 FUNCTION_HEADERS = {
@@ -47,8 +47,10 @@ def fetch_nusmods(module_code: str):
 # ----------------------------
 
 def get_disqus_thread_id(module_code: str):
+    if not DISQUS_API_KEY:
+        return None
 
-    module_code = module_code.upper() 
+    module_code = module_code.upper()
 
     url = "https://disqus.com/api/3.0/threads/details.json"
 
@@ -85,6 +87,9 @@ def get_disqus_thread_id(module_code: str):
 # Helper: fetch comments
 # ----------------------------
 def fetch_disqus_comments(thread_id: str):
+    if not DISQUS_API_KEY:
+        return []
+
     url = "https://disqus.com/api/3.0/threads/listPosts.json"
 
     params = {
