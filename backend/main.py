@@ -20,6 +20,7 @@ import timetable_routes
 import timer_routes
 import studyplan_routes
 import coursereg_routes
+import auth_routes
 
 database_access.init_db()
 
@@ -40,6 +41,8 @@ app.include_router(timetable_routes.router)
 app.include_router(timer_routes.router)
 app.include_router(studyplan_routes.router)
 app.include_router(coursereg_routes.router)
+app.include_router(auth_routes.router)
+
 
 MODULE_CODE_RE = re.compile(r'^[A-Z]{2,3}\d{4}[A-Z]{0,2}$')
 

@@ -37,7 +37,9 @@ def init_db():
             faculty TEXT,
             year_of_study INTEGER,
             course TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
+            created_at TEXT DEFAULT (datetime('now')),
+            email TEXT,
+            picture TEXT
         )
     """)
 

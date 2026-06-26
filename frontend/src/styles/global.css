@@ -144,7 +144,7 @@ input::placeholder { color: var(--text-subtle); }
 }
 
 /* ── Navbar responsive ────────────────────────────────── */
-.nav-links { display: flex; gap: 4px; flex: 1; }
+.nav-links { display: flex; gap: 4px; flex: 1; align-items: center; }
 .nav-burger { display: none; flex-direction: column; gap: 4px; background: none; border: none; cursor: pointer; padding: 6px; margin-left: auto; }
 
 @media (max-width: 700px) {

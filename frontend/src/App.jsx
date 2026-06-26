@@ -1,5 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
-import { useEffect } from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Navbar from './components/Navbar.jsx'
 import Home from './pages/Home.jsx'
 import Timetable from './pages/Timetable.jsx'
@@ -9,39 +8,41 @@ import ModuleAnalysis from './pages/ModuleAnalysis.jsx'
 import SharedTimetable from './pages/SharedTimetable.jsx'
 import Compare from './pages/Compare.jsx'
 import CourseReg from './pages/CourseReg.jsx'
-import { createUser } from './api.js'
+import Login from './pages/Login.jsx'
+import Profile from './pages/Profile.jsx'
 
-function getUserId() {
-  let id = localStorage.getItem('userId')
-  if (!id) {
-    id = crypto.randomUUID()
-    localStorage.setItem('userId', id)
-  }
-  return id
+export function getUserId() {
+  const user = localStorage.getItem('user')
+  if (!user) return null
+  return JSON.parse(user).user_id
+}
+
+function ProtectedRoute({ children }) {
+  const user = localStorage.getItem('user')
+  if (!user) return <Navigate to="/login" replace />
+  return children
 }
 
 export default function App() {
-  useEffect(() => {
-    const id = getUserId()
-    // Silently register user on first visit
-    createUser({ user_id: id }).catch(() => {})
-  }, [])
-
   return (
-    <>
-      <Navbar />
-      <Routes>
-        <Route path="/"               element={<Home />} />
-        <Route path="/timetable"      element={<Timetable />} />
-        <Route path="/timer"          element={<Timer />} />
-        <Route path="/studyplan"      element={<StudyPlan />} />
-        <Route path="/analysis"       element={<ModuleAnalysis />} />
-        <Route path="/shared/:token"  element={<SharedTimetable />} />
-        <Route path="/compare"        element={<Compare />} />
-        <Route path="/coursereg"      element={<CourseReg />} />
-      </Routes>
-    </>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/shared/:token" element={<SharedTimetable />} />
+      <Route path="*" element={
+        <ProtectedRoute>
+          <Navbar />
+          <Routes>
+            <Route path="/"          element={<Home />} />
+            <Route path="/timetable" element={<Timetable />} />
+            <Route path="/timer"     element={<Timer />} />
+            <Route path="/studyplan" element={<StudyPlan />} />
+            <Route path="/analysis"  element={<ModuleAnalysis />} />
+            <Route path="/compare"   element={<Compare />} />
+            <Route path="/coursereg" element={<CourseReg />} />
+            <Route path="/profile"   element={<Profile />} />
+          </Routes>
+        </ProtectedRoute>
+      } />
+    </Routes>
   )
 }
-
-export { getUserId }

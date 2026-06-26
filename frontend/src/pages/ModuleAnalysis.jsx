@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef} from 'react'
 import { getCourseInfo, searchModules, getEasiestModules, getMostRecommended } from '../api.js'
 
 // ── Subcomponents ─────────────────────────────────────────────────────────────
@@ -270,16 +270,20 @@ export default function ModuleAnalysis() {
     }
   }
 
+  //TODO: fix lag
   async function handleQueryChange(e) {
     const q = e.target.value
     setQuery(q)
-    if (q.length >= 2) {
-      try {
-        const res = await searchModules(q)
-        setSuggestions(res.slice(0, 8))
-      } catch {
-        setSuggestions([])
-      }
+    clearTimeout(searchTimeout.current)
+    if (q.length >= 2) { //two letters = length of most faculty code of module
+      searchTimeout.current = setTimeout(async () => {
+        try {
+          const res = await searchModules(q)
+          setSuggestions(res.slice(0, 8))
+        } catch {
+          setSuggestions([])
+        }
+      }, 250) //wait 1/4 of sec of the user not typing before fetching results
     } else {
       setSuggestions([])
     }

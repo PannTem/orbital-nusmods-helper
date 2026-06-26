@@ -12,7 +12,7 @@ NUSMODS_BASE = "https://api.nusmods.com/v2"
 _module_list: list = []
 _module_list_fetched_at: float = 0
 
-DISQUS_API_KEY = os.environ.get("DISQUS_API_KEY", "")
+DISQUS_API_KEY = 'wIgxYPvH9Qx6Aef53CpO0LQ1DGx4l3vmtyf9OgQ18z6ZWxLRhEV7GQf8ozAXFCuJ' #os.environ.get("DISQUS_API_KEY", "")
 DISQUS_FORUM = "nusmods-prod"
 
 FUNCTION_HEADERS = {

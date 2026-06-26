@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 
 const links = [
   { to: '/',           label: 'Home' },
@@ -13,6 +13,13 @@ const links = [
 
 export default function Navbar() {
   const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+  const user = JSON.parse(localStorage.getItem('user') || '{}')
+
+  function logout() {
+    localStorage.removeItem('user')
+    navigate('/login')
+  }
 
   return (
     <nav style={styles.nav}>
@@ -31,6 +38,17 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
+        </div>
+
+        {/* User info + logout */}
+        <div style={styles.userArea}>
+          <NavLink to="/profile" style={styles.userInfo}>
+            {user.picture && (
+              <img src={user.picture} alt="avatar" style={styles.avatar} />
+            )}
+            <span style={styles.userName}>{user.name}</span>
+          </NavLink>
+          <button onClick={logout} style={styles.logoutBtn}>Logout</button>
         </div>
 
         {/* Mobile hamburger */}
@@ -55,6 +73,7 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
+          <button onClick={logout} style={styles.drawerLogout}>Logout</button>
         </div>
       )}
     </nav>
@@ -89,6 +108,44 @@ const styles = {
     transition: 'color .12s, background .12s',
   },
   linkActive: { color: 'white', background: 'rgba(255,255,255,.1)' },
+  userArea: {
+    marginLeft: 'auto',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 0,
+  },
+  userInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    borderRadius: 6,
+    padding: '4px 8px',
+    transition: 'background .12s',
+  },
+  avatar: {
+    width: 30,
+    height: 30,
+    borderRadius: '50%',
+  },
+  userName: {
+    color: '#94a3b8',
+    fontSize: 14,
+    whiteSpace: 'nowrap',
+    lineHeight: 1,
+    display: 'flex',
+    alignItems: 'center',
+  },
+  logoutBtn: {
+    background: 'transparent',
+    border: '1px solid #475569',
+    color: '#94a3b8',
+    borderRadius: 6,
+    padding: '4px 12px',
+    fontSize: 13,
+    cursor: 'pointer',
+  },
   bar: {
     display: 'block', width: 22, height: 2,
     background: '#94a3b8', borderRadius: 2,
@@ -106,4 +163,13 @@ const styles = {
     display: 'block',
   },
   drawerLinkActive: { color: 'white', background: 'rgba(255,255,255,.06)' },
+  drawerLogout: {
+    background: 'transparent',
+    border: 'none',
+    color: '#94a3b8',
+    padding: '14px 24px',
+    fontSize: 15,
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
 }
