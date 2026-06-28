@@ -2,15 +2,9 @@
 .env
 
 # Python
-__pycache__/
-*.py[cod]
-*.pyo
 .venv/
 venv/
 env/
-
-# Database (don't commit the populated database)
-database/modules.db
 
 # Docs / local files
 *.pdf
