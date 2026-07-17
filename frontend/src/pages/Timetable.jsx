@@ -13,6 +13,92 @@ const PALETTE = [
   '#14b8a6', '#ec4899', '#84cc16', '#a78bfa',
 ]
 
+// ── NUSMods share-URL format ──────────────────────────────────────────────────
+// NUSMods encodes a timetable in the query string as
+//   https://nusmods.com/timetable/sem-1/share?CS2102=TUT:09,LEC:1
+// i.e. MODULE=ABBREV:classNo pairs. This app stores lesson types using NUSMods'
+// full names (slots come straight from NUSMods data), so the only translation
+// needed is the lesson-type abbreviation.
+
+// Mirrors NUSMods' LESSON_TYPE_ABBREV
+// (nusmodifications/nusmods: website/src/utils/timetables/lessonId.ts)
+const LESSON_TYPE_ABBREV = {
+  'Design Lecture': 'DLEC',
+  'Laboratory': 'LAB',
+  'Lecture': 'LEC',
+  'Packaged Laboratory': 'PLAB',
+  'Packaged Lecture': 'PLEC',
+  'Packaged Tutorial': 'PTUT',
+  'Recitation': 'REC',
+  'Sectional Teaching': 'SEC',
+  'Seminar-Style Module Class': 'SEM',
+  'Tutorial': 'TUT',
+  'Tutorial Type 2': 'TUT2',
+  'Tutorial Type 3': 'TUT3',
+  'Workshop': 'WS',
+}
+const ABBREV_TO_LESSON_TYPE = Object.fromEntries(
+  Object.entries(LESSON_TYPE_ABBREV).map(([full, abbrev]) => [abbrev, full])
+)
+
+// Build a NUSMods-style share URL from this app's selections.
+function selectionsToNusmodsUrl(selections, sem, origin = 'https://nusmods.com') {
+  const parts = []
+  for (const [code, lessons] of Object.entries(selections || {})) {
+    const pairs = []
+    for (const [lessonType, classNo] of Object.entries(lessons || {})) {
+      if (classNo === undefined || classNo === null || classNo === '') continue
+      const abbrev = LESSON_TYPE_ABBREV[lessonType] || lessonType
+      pairs.push(`${abbrev}:${classNo}`)
+    }
+    if (pairs.length) parts.push(`${code}=${pairs.join(',')}`)
+  }
+  return `${origin}/timetable/sem-${sem}/share?${parts.join('&')}`
+}
+
+// Parse a NUSMods share URL (or just its query string) into flat selections.
+function parseNusmodsShareUrl(input) {
+  if (!input || typeof input !== 'string') return null
+
+  let sem = null
+  const semMatch = input.match(/sem-(\d)/i)
+  if (semMatch) sem = parseInt(semMatch[1], 10)
+
+  const qIndex = input.indexOf('?')
+  const query = qIndex >= 0 ? input.slice(qIndex + 1) : input
+
+  const selections = []
+  const skipped = []
+
+  for (const part of query.split('&')) {
+    if (!part) continue
+    const eq = part.indexOf('=')
+    if (eq < 0) continue
+
+    const code = decodeURIComponent(part.slice(0, eq)).toUpperCase().trim()
+    const value = part.slice(eq + 1)
+    if (!code || !value) continue
+
+    // NUSMods separates lesson types with ',' normally and ';' in TA-mode links
+    for (const pair of value.split(/[,;]/)) {
+      const colon = pair.indexOf(':')
+      if (colon < 0) continue
+      const abbrev = pair.slice(0, colon).trim().toUpperCase()
+      const classNo = decodeURIComponent(pair.slice(colon + 1)).trim()
+      if (!abbrev || !classNo) continue
+
+      const lessonType = ABBREV_TO_LESSON_TYPE[abbrev]
+      if (!lessonType) {
+        skipped.push(`${code} ${abbrev}`)
+        continue
+      }
+      selections.push({ module_code: code, lesson_type: lessonType, class_no: classNo })
+    }
+  }
+
+  return { sem, selections, skipped }
+}
+
 // ── Preference slider ─────────────────────────────────────────────────────────
 
 function PrefSlider({ label, value, onChange }) {
@@ -216,6 +302,63 @@ function ShareModal({ moduleCodes, selected, setSelected, shareLink, sharing, co
   )
 }
 
+// ── NUSMods import/export modal ───────────────────────────────────────────────
+
+function NusmodsModal({ exportUrl, hasModules, importText, setImportText,
+                        importing, importMsg, copied, onCopy, onImport, onClose }) {
+  return (
+    <div style={ms.overlay} onClick={onClose}>
+      <div style={ms.box} onClick={e => e.stopPropagation()}>
+        <div style={ms.header}>
+          <h3 style={ms.title}>NUSMods Import / Export</h3>
+          <button style={ms.closeBtn} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Export */}
+        <p style={ms.secTitle}>Export to NUSMods</p>
+        {hasModules ? (
+          <>
+            <p style={ms.sub}>This link opens your timetable on NUSMods:</p>
+            <div style={ms.linkBox}>
+              <input value={exportUrl} readOnly style={{ flex: 1, fontSize: 12 }} />
+              <button className="btn-primary" onClick={onCopy} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {copied ? '✓ Copied!' : 'Copy'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p style={{ ...ms.sub, marginBottom: 4 }}>Add some modules first to export.</p>
+        )}
+
+        <hr className="divider" style={{ margin: '18px 0' }} />
+
+        {/* Import */}
+        <p style={ms.secTitle}>Import from NUSMods</p>
+        <p style={ms.sub}>Paste a NUSMods share link. This replaces the timetable for the link's semester.</p>
+        <input
+          value={importText}
+          onChange={e => setImportText(e.target.value)}
+          placeholder="https://nusmods.com/timetable/sem-1/share?CS2102=TUT:09,LEC:1"
+          style={{ fontSize: 12, marginBottom: 10 }}
+        />
+        <button
+          className="btn-primary"
+          onClick={onImport}
+          disabled={importing || !importText.trim()}
+          style={{ width: '100%' }}
+        >
+          {importing ? 'Importing…' : 'Import Timetable'}
+        </button>
+        {importMsg && (
+          <p style={{ marginTop: 10, fontSize: 13, color: importMsg.startsWith('✓') ? '#16a34a' : '#dc2626' }}>
+            {importMsg}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Timetable() {
@@ -242,7 +385,15 @@ export default function Timetable() {
   const [sharing,        setSharing]        = useState(false)
   const [copied,         setCopied]         = useState(false)
 
+  // nusmods import/export modal state
+  const [showNusmodsModal, setShowNusmodsModal] = useState(false)
+  const [importText,       setImportText]       = useState('')
+  const [importing,        setImporting]        = useState(false)
+  const [importMsg,        setImportMsg]        = useState('')
+  const [nusCopied,        setNusCopied]        = useState(false)
+
   const moduleCodes = Object.keys(selections)
+  const nusmodsUrl = useMemo(() => selectionsToNusmodsUrl(selections, sem), [selections, sem])
 
   // Detect manually-selected conflicting slots
   const conflicts = useMemo(() => {
@@ -392,6 +543,72 @@ export default function Timetable() {
     })
   }
 
+  // ── nusmods import/export handlers ─────────────────────────────────────────────
+
+  function openNusmodsModal() {
+    setImportText('')
+    setImportMsg('')
+    setNusCopied(false)
+    setShowNusmodsModal(true)
+  }
+
+  function copyNusmodsUrl() {
+    navigator.clipboard.writeText(nusmodsUrl).then(() => {
+      setNusCopied(true)
+      setTimeout(() => setNusCopied(false), 2500)
+    })
+  }
+
+  async function reloadTimetable(targetSem) {
+    const data = await getTimetable(userId, targetSem)
+    const sel = {}
+    for (const s of data.selections) {
+      sel[s.module_code] = sel[s.module_code] || {}
+      sel[s.module_code][s.lesson_type] = s.class_no
+    }
+    setSelections(sel)
+    setRenderedSlots(data.rendered_slots || [])
+  }
+
+  async function handleNusmodsImport() {
+    setImporting(true)
+    setImportMsg('')
+    try {
+      const parsed = parseNusmodsShareUrl(importText)
+      if (!parsed || parsed.selections.length === 0) {
+        setImportMsg('Could not read any modules from that link.')
+        return
+      }
+      const targetSem = parsed.sem || sem
+
+      // Replace target sem: clear existing modules, then write imported slots
+      const current = await getTimetable(userId, targetSem)
+      const currentCodes = [...new Set(current.selections.map(s => s.module_code))]
+      await Promise.all(currentCodes.map(c => removeModule(userId, c, targetSem)))
+      await Promise.all(parsed.selections.map(s =>
+        updateSlot(userId, {
+          module_code: s.module_code,
+          lesson_type: s.lesson_type,
+          class_no:    s.class_no,
+          sem:         targetSem,
+        })
+      ))
+
+      setSem(targetSem)
+      await reloadTimetable(targetSem)
+
+      const count = new Set(parsed.selections.map(s => s.module_code)).size
+      let msg = `✓ Imported ${count} module${count === 1 ? '' : 's'} into Sem ${targetSem}.`
+      if (parsed.skipped.length) msg += ` Skipped unknown: ${parsed.skipped.join(', ')}.`
+      setImportMsg(msg)
+      setImportText('')
+    } catch {
+      setImportMsg('Import failed. Check the link and try again.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   // ── render ────────────────────────────────────────────────────────────────────
 
   return (
@@ -423,6 +640,20 @@ export default function Timetable() {
           onClose={() => setShowShareModal(false)}
         />
       )}
+      {showNusmodsModal && (
+        <NusmodsModal
+          exportUrl={nusmodsUrl}
+          hasModules={moduleCodes.length > 0}
+          importText={importText}
+          setImportText={setImportText}
+          importing={importing}
+          importMsg={importMsg}
+          copied={nusCopied}
+          onCopy={copyNusmodsUrl}
+          onImport={handleNusmodsImport}
+          onClose={() => setShowNusmodsModal(false)}
+        />
+      )}
 
       <div className="no-print" style={styles.topBar}>
         <h1 className="page-title" style={{ marginBottom: 0 }}>Timetable Builder</h1>
@@ -438,6 +669,13 @@ export default function Timetable() {
             </button>
           ))}
         </div>
+        <button
+          className="btn-ghost"
+          onClick={openNusmodsModal}
+          style={{ padding: '6px 14px' }}
+        >
+          NUSMods
+        </button>
         {moduleCodes.length > 0 && (
           <>
             <button
