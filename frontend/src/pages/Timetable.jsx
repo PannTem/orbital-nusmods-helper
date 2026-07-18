@@ -674,7 +674,7 @@ export default function Timetable() {
           onClick={openNusmodsModal}
           style={{ padding: '6px 14px' }}
         >
-          NUSMods
+          Export to NUSMods
         </button>
         {moduleCodes.length > 0 && (
           <>
