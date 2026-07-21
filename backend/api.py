@@ -160,3 +160,21 @@ def fetch_module_slots(module_code: str, sem: int = 1) -> list | None:
             return sem_data.get("timetable", [])
     return []
 
+
+def fetch_module_exam(module_code: str, sem: int = 1) -> dict | None:
+    """Return {exam_date, exam_duration} for a module/sem, or None if no exam.
+
+    exam_date is the ISO datetime string from NUSMods (e.g.
+    "2025-11-27T13:00:00.000+08:00"); exam_duration is in minutes.
+    """
+    data = fetch_nusmods(module_code.upper())
+    if data is None:
+        return None
+    for sem_data in data.get("semesterData", []):
+        if sem_data["semester"] == sem:
+            exam_date = sem_data.get("examDate")
+            if not exam_date:
+                return None
+            return {"exam_date": exam_date, "exam_duration": sem_data.get("examDuration")}
+    return None
+

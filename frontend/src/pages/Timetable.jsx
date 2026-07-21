@@ -366,6 +366,7 @@ export default function Timetable() {
   const [sem,           setSem]           = useState(2)
   const [selections,    setSelections]    = useState({})
   const [renderedSlots, setRenderedSlots] = useState([])
+  const [exams,         setExams]         = useState([])
   const [saving,        setSaving]        = useState(false)
 
   // generate modal state
@@ -416,6 +417,29 @@ export default function Timetable() {
     }
     return [...bad]
   }, [renderedSlots])
+
+  // Detect overlapping exam timings among selected modules
+  const examClashes = useMemo(() => {
+    const parsed = exams
+      .filter(e => e.exam_date)
+      .map(e => {
+        const start = new Date(e.exam_date).getTime()
+        const dur = (e.exam_duration || 0) * 60 * 1000
+        return { code: e.module_code, start, end: start + dur }
+      })
+      .filter(e => !isNaN(e.start))
+    const bad = new Set()
+    for (let i = 0; i < parsed.length; i++) {
+      for (let j = i + 1; j < parsed.length; j++) {
+        const a = parsed[i], b = parsed[j]
+        if (a.start < b.end && b.start < a.end) {
+          bad.add(a.code); bad.add(b.code)
+        }
+      }
+    }
+    return [...bad]
+  }, [exams])
+
   const moduleColors = Object.fromEntries(
     moduleCodes.map((c, i) => [c, PALETTE[i % PALETTE.length]])
   )
@@ -430,6 +454,7 @@ export default function Timetable() {
       }
       setSelections(sel)
       setRenderedSlots(data.rendered_slots || [])
+      setExams(data.exams || [])
     }).catch(() => {})
   }, [sem])
 
@@ -445,6 +470,7 @@ export default function Timetable() {
       await updateSlot(userId, { module_code: code, lesson_type: lessonType, class_no: classNo, sem })
       const data = await getTimetable(userId, sem)
       setRenderedSlots(data.rendered_slots || [])
+      setExams(data.exams || [])
     } finally {
       setSaving(false)
     }
@@ -459,6 +485,7 @@ export default function Timetable() {
     await removeModule(userId, code, sem)
     const data = await getTimetable(userId, sem)
     setRenderedSlots(data.rendered_slots || [])
+    setExams(data.exams || [])
   }
 
   // ── generate handlers ────────────────────────────────────────────────────────
@@ -568,6 +595,7 @@ export default function Timetable() {
     }
     setSelections(sel)
     setRenderedSlots(data.rendered_slots || [])
+    setExams(data.exams || [])
   }
 
   async function handleNusmodsImport() {
@@ -726,6 +754,11 @@ export default function Timetable() {
           />
         </div>
         <div className="print-area" style={styles.gridCol}>
+          {examClashes.length > 0 && (
+            <div style={styles.examClashBanner}>
+              ⚠ Exam clash: {examClashes.join(', ')} have overlapping exam timings.
+            </div>
+          )}
           {conflicts.length > 0 && (
             <div className="no-print" style={styles.conflictBanner}>
               Time conflict: {conflicts.join(', ')} — pick different slots to resolve.
@@ -734,6 +767,7 @@ export default function Timetable() {
           <TimetableGrid
             renderedSlots={renderedSlots}
             moduleColors={moduleColors}
+            conflicts={conflicts}
           />
           {moduleCodes.length === 0 && (
             <p style={styles.hint}>Add modules from the left panel to see them here.</p>
@@ -783,6 +817,12 @@ const styles = {
     background: '#fff1f1', border: '1px solid #fecaca',
     borderRadius: 'var(--radius)', padding: '9px 14px',
     color: '#b91c1c', fontSize: 12, fontWeight: 500,
+    marginBottom: 12,
+  },
+  examClashBanner: {
+    background: '#dc2626', border: '1px solid #b91c1c',
+    borderRadius: 'var(--radius)', padding: '11px 14px',
+    color: '#ffffff', fontSize: 13, fontWeight: 600,
     marginBottom: 12,
   },
 }

@@ -30,8 +30,9 @@ function formatTime(t) {
   return `${t.slice(0, 2)}:${t.slice(2, 4)}`
 }
 
-export default function TimetableGrid({ renderedSlots, moduleColors, onSlotClick }) {
+export default function TimetableGrid({ renderedSlots, moduleColors, onSlotClick, conflicts = [] }) {
   const moduleCodes = Object.keys(moduleColors)
+  const conflictSet = new Set(conflicts)
 
   // Time labels on the left
   const timeLabels = []
@@ -85,6 +86,8 @@ export default function TimetableGrid({ renderedSlots, moduleColors, onSlotClick
           const rowEnd   = timeToRow(slot.endTime)
           if (col < 2 || rowStart < 2) return null
 
+          const isConflicting = conflictSet.has(slot.moduleCode)
+
           return (
             <div
               key={i}
@@ -96,6 +99,7 @@ export default function TimetableGrid({ renderedSlots, moduleColors, onSlotClick
                 gridRowStart: rowStart,
                 gridRowEnd: rowEnd,
                 background: color,
+                ...(isConflicting ? styles.slotConflict : {}),
               }}
             >
               <div style={styles.slotCode}>{slot.moduleCode}</div>
@@ -160,6 +164,12 @@ const styles = {
     gap: 1,
     zIndex: 1,
     transition: 'opacity .15s, transform .15s',
+  },
+  slotConflict: {
+    outline: '2px solid #dc2626',
+    outlineOffset: -2,
+    boxShadow: '0 0 0 3px rgba(220,38,38,.25)',
+    zIndex: 2,
   },
   slotCode:  { fontSize: 12, fontWeight: 700 },
   slotType:  { fontSize: 10, opacity: 0.9 },
