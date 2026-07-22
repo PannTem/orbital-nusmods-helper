@@ -24,7 +24,14 @@ def init_db():
             top_negative_comment_likes INTEGER,
             comment_count INTEGER,
             expected_gpa REAL,
-            actual_gpa REAL
+            actual_gpa REAL,
+            summary TEXT,
+            grade_thresholds_json TEXT,
+            grade_pairs_json TEXT,
+            workload_json TEXT,
+            prerequisite TEXT,
+            preclusion TEXT,
+            analysis_version INTEGER DEFAULT 0
         )
     """)
 
@@ -37,7 +44,9 @@ def init_db():
             course TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW(),
             email TEXT,
-            picture TEXT
+            picture TEXT,
+            review_streak INTEGER DEFAULT 0,
+            last_review_date TEXT
         )
     """)
 
@@ -112,24 +121,14 @@ def init_db():
         )
     """)
 
-    # Use savepoints to silently skip columns that already exist
-    for col_sql in [
-        "ALTER TABLE module_scores ADD COLUMN summary TEXT",
-        "ALTER TABLE module_scores ADD COLUMN grade_thresholds_json TEXT",
-        "ALTER TABLE module_scores ADD COLUMN workload_json TEXT",
-        "ALTER TABLE module_scores ADD COLUMN prerequisite TEXT",
-        "ALTER TABLE module_scores ADD COLUMN preclusion TEXT",
-        "ALTER TABLE module_scores ADD COLUMN analysis_version INTEGER DEFAULT 0",
-        "ALTER TABLE module_scores ADD COLUMN grade_pairs_json TEXT",
-        "ALTER TABLE users ADD COLUMN review_streak INTEGER DEFAULT 0",
-        "ALTER TABLE users ADD COLUMN last_review_date TEXT",
-    ]:
-        try:
-            cur.execute("SAVEPOINT sp")
-            cur.execute(col_sql)
-            cur.execute("RELEASE SAVEPOINT sp")
-        except Exception:
-            cur.execute("ROLLBACK TO SAVEPOINT sp")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS friends (
+            user_id TEXT NOT NULL,
+            friend_id TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            PRIMARY KEY (user_id, friend_id)
+        )
+    """)
 
     conn.commit()
     cur.close()

@@ -135,6 +135,7 @@ def get_timetable(user_id: str, sem: int = 1, conn: psycopg2.extensions.connecti
 
     # Fetch slot details from NUSMods and filter to only selected slots
     rendered_slots = []
+    exams = []
     for mc in module_codes:
         slots = api.fetch_module_slots(mc, sem) or []
         lesson_map = selected_map.get(mc, {})
@@ -143,11 +144,16 @@ def get_timetable(user_id: str, sem: int = 1, conn: psycopg2.extensions.connecti
             if chosen and slot["classNo"] == chosen:
                 rendered_slots.append({**slot, "moduleCode": mc})
 
+        exam = api.fetch_module_exam(mc, sem)
+        if exam:
+            exams.append({"module_code": mc, **exam})
+
     return {
         "user_id": user_id,
         "sem": sem,
         "selections": selections,
         "rendered_slots": rendered_slots,
+        "exams": exams,
     }
 
 
