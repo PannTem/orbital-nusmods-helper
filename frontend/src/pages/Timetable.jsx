@@ -315,7 +315,7 @@ function NusmodsModal({ exportUrl, hasModules, importText, setImportText,
         </div>
 
         {/* Export */}
-        <p style={ms.secTitle}>Export to NUSMods</p>
+        <p style={ms.secTitle}>Import/Export to NUSMods</p>
         {hasModules ? (
           <>
             <p style={ms.sub}>This link opens your timetable on NUSMods:</p>
