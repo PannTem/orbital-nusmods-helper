@@ -335,7 +335,7 @@ def get_leaderboard(faculty, year_of_study, course, conn, limit=10):
         conditions.append("u.year_of_study = %s")
         params.append(int(year_of_study))
     if course:
-        conditions.append("LOWER(u.course) LIKE %s")
+        conditions.append("u.course ILIKE %s")
         params.append(f"%{course.lower()}%")
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
