@@ -10,6 +10,7 @@ import Compare from './pages/Compare.jsx'
 import CourseReg from './pages/CourseReg.jsx'
 import Login from './pages/Login.jsx'
 import Profile from './pages/Profile.jsx'
+import Friends from './pages/Friends.jsx'
 
 export function getUserId() {
   const user = localStorage.getItem('user')
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/compare"   element={<Compare />} />
             <Route path="/coursereg" element={<CourseReg />} />
             <Route path="/profile"   element={<Profile />} />
+            <Route path="/friends"   element={<Friends />} />
           </Routes>
         </ProtectedRoute>
       } />

@@ -531,3 +531,136 @@ def update_user_streak(user_id: str, streak: int, last_date: str,
         WHERE user_id=%s
     """, (streak, last_date, user_id))
     conn.commit()
+
+
+# ── friends ───────────────────────────────────────────────────────────────────
+# The friends table is directional: user_id is the requester, friend_id the
+# recipient, and status is 'pending' or 'accepted'. A single row represents a
+# friendship in both directions once accepted.
+
+def search_users(query: str, conn: psycopg2.extensions.connection,
+                 exclude_user_id: str = None, limit: int = 10):
+    """Find users whose display name or email contains the query (case-insensitive)."""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    like = f"%{query}%"
+    params = [like, like]
+    exclude_sql = ""
+    if exclude_user_id:
+        exclude_sql = "AND user_id <> %s"
+        params.append(exclude_user_id)
+    params.append(limit)
+    cur.execute(f"""
+        SELECT user_id, display_name, email, picture, faculty, year_of_study, course
+        FROM users
+        WHERE (display_name ILIKE %s OR email ILIKE %s)
+        {exclude_sql}
+        ORDER BY display_name
+        LIMIT %s
+    """, params)
+    return [dict(r) for r in cur.fetchall()]
+
+
+def get_friendship(user_a: str, user_b: str, conn: psycopg2.extensions.connection):
+    """Return the friendship row between two users (either direction), or None."""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT user_id, friend_id, status FROM friends
+        WHERE (user_id=%s AND friend_id=%s) OR (user_id=%s AND friend_id=%s)
+    """, (user_a, user_b, user_b, user_a))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def send_friend_request(requester: str, recipient: str,
+                        conn: psycopg2.extensions.connection):
+    """Send a request. If the recipient already requested the requester, this
+    auto-accepts instead. Returns the resulting status."""
+    existing = get_friendship(requester, recipient, conn)
+    cur = conn.cursor()
+    if existing:
+        if existing["status"] == "accepted":
+            return "accepted"
+        # A pending request already exists between them
+        if existing["user_id"] == recipient and existing["friend_id"] == requester:
+            # Recipient had already requested the requester → accept it
+            cur.execute("""
+                UPDATE friends SET status='accepted'
+                WHERE user_id=%s AND friend_id=%s
+            """, (recipient, requester))
+            conn.commit()
+            return "accepted"
+        return "pending"  # requester already sent this
+
+    cur.execute("""
+        INSERT INTO friends (user_id, friend_id, status)
+        VALUES (%s, %s, 'pending')
+        ON CONFLICT (user_id, friend_id) DO NOTHING
+    """, (requester, recipient))
+    conn.commit()
+    return "pending"
+
+
+def accept_friend_request(recipient: str, requester: str,
+                          conn: psycopg2.extensions.connection):
+    """Accept pending request that requester send to recipient"""
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE friends SET status='accepted'
+        WHERE user_id=%s AND friend_id=%s AND status='pending'
+    """, (requester, recipient))
+    conn.commit()
+
+
+def remove_friendship(user_a: str, user_b: str,
+                      conn: psycopg2.extensions.connection):
+    """Remove a friendship or decline a request bidirectional"""
+    cur = conn.cursor()
+    cur.execute("""
+        DELETE FROM friends
+        WHERE (user_id=%s AND friend_id=%s) OR (user_id=%s AND friend_id=%s)
+    """, (user_a, user_b, user_b, user_a))
+    conn.commit()
+
+
+def get_friends(user_id: str, conn: psycopg2.extensions.connection):
+    """Return accepted friends (ranked by weekly study time)"""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT u.user_id, u.display_name, u.picture, u.faculty, u.year_of_study, u.course,
+               COALESCE(SUM(s.duration_seconds), 0) AS week_seconds
+        FROM friends f
+        JOIN users u
+          ON u.user_id = CASE WHEN f.user_id=%s THEN f.friend_id ELSE f.user_id END
+        LEFT JOIN study_sessions s
+          ON s.user_id = u.user_id
+         AND DATE(s.start_time) >= CURRENT_DATE - INTERVAL '6 days'
+         AND s.duration_seconds IS NOT NULL
+        WHERE (f.user_id=%s OR f.friend_id=%s) AND f.status='accepted'
+        GROUP BY u.user_id
+        ORDER BY week_seconds DESC
+    """, (user_id, user_id, user_id))
+    return [dict(r) for r in cur.fetchall()]
+
+
+def get_incoming_requests(user_id: str, conn: psycopg2.extensions.connection):
+    """Requests other users have sent to this user (pending.)"""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT u.user_id, u.display_name, u.picture, u.faculty, u.year_of_study
+        FROM friends f
+        JOIN users u ON u.user_id = f.user_id
+        WHERE f.friend_id=%s AND f.status='pending'
+    """, (user_id,))
+    return [dict(r) for r in cur.fetchall()]
+
+#maybe i dont need this
+def get_outgoing_requests(user_id: str, conn: psycopg2.extensions.connection):
+    """Requests this user has sent that are still pending."""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT u.user_id, u.display_name, u.picture, u.faculty, u.year_of_study
+        FROM friends f
+        JOIN users u ON u.user_id = f.friend_id
+        WHERE f.user_id=%s AND f.status='pending'
+    """, (user_id,))
+    return [dict(r) for r in cur.fetchall()]

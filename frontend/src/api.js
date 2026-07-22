@@ -123,3 +123,15 @@ export function exportStudyPlan(userId) {
   a.click()
   document.body.removeChild(a)
 }
+
+// ── friends ─────────────────────────────────────────────────────────────────
+
+export const searchUsers = (q, userId) =>
+  get(`/users/search?q=${encodeURIComponent(q)}${userId ? `&user_id=${userId}` : ''}`)
+export const sendFriendRequest = (requester, recipient) =>
+  post('/friends/request', { requester, recipient })
+export const acceptFriendRequest = (userId, otherId) =>
+  post('/friends/accept', { user_id: userId, other_id: otherId })
+export const removeFriend = (userId, otherId) =>
+  del(`/friends/${userId}/${otherId}`)
+export const getFriends = (userId) => get(`/friends/${userId}`)

@@ -9,6 +9,7 @@ const links = [
   { to: '/compare',    label: 'Compare' },
   { to: '/timer',      label: 'Study Timer' },
   { to: '/studyplan',  label: 'Study Plan' },
+  { to: '/friends',    label: 'Friends' },
 ]
 
 export default function Navbar() {
