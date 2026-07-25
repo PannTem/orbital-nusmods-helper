@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { getUserId } from '../App.jsx'
 import {
   getTimetable, updateSlot, removeModule,
-  generateTimetable, shareTimetable, exportTimetableIcal,
+  generateTimetable, shareTimetable, exportTimetableIcal, getFriends,
 } from '../api.js'
 import ModulePanel from '../components/timetable/ModulePanel.jsx'
 import TimetableGrid from '../components/timetable/TimetableGrid.jsx'
@@ -12,6 +12,12 @@ const PALETTE = [
   '#ef4444', '#06b6d4', '#f97316', '#6366f1',
   '#14b8a6', '#ec4899', '#84cc16', '#a78bfa',
 ]
+
+// Build a { moduleCode: color } map from a list of rendered slots
+function colorsForSlots(slots) {
+  const codes = [...new Set(slots.map(s => s.moduleCode))]
+  return Object.fromEntries(codes.map((c, i) => [c, PALETTE[i % PALETTE.length]]))
+}
 
 // ── NUSMods share-URL format ──────────────────────────────────────────────────
 // NUSMods encodes a timetable in the query string as
@@ -393,8 +399,16 @@ export default function Timetable() {
   const [importMsg,        setImportMsg]        = useState('')
   const [nusCopied,        setNusCopied]        = useState(false)
 
+  // friend timetable comparison state
+  const [friends,     setFriends]     = useState([])
+  const [compareId,   setCompareId]   = useState('')   // '' = not comparing
+  const [friendSlots, setFriendSlots] = useState([])
+
   const moduleCodes = Object.keys(selections)
   const nusmodsUrl = useMemo(() => selectionsToNusmodsUrl(selections, sem), [selections, sem])
+
+  const compareFriend = friends.find(f => f.user_id === compareId)
+  const friendColors = useMemo(() => colorsForSlots(friendSlots), [friendSlots])
 
   // Detect manually-selected conflicting slots
   const conflicts = useMemo(() => {
@@ -457,6 +471,21 @@ export default function Timetable() {
       setExams(data.exams || [])
     }).catch(() => {})
   }, [sem])
+
+  // Load the friends list once (for the compare dropdown)
+  useEffect(() => {
+    getFriends(userId).then(d => setFriends(d.friends || [])).catch(() => {})
+  }, [])
+
+  // Fetch the selected friend's timetable for the current semester
+  useEffect(() => {
+    if (!compareId) { setFriendSlots([]); return }
+    let cancelled = false
+    getTimetable(compareId, sem)
+      .then(d => { if (!cancelled) setFriendSlots(d.rendered_slots || []) })
+      .catch(() => { if (!cancelled) setFriendSlots([]) })
+    return () => { cancelled = true }
+  }, [compareId, sem])
 
   // ── existing handlers ────────────────────────────────────────────────────────
 
@@ -740,6 +769,23 @@ export default function Timetable() {
             </button>
           </>
         )}
+        <select
+          className="no-print"
+          value={compareId}
+          onMouseDown={e => {
+            if (friends.length === 0) {
+              e.preventDefault()
+              alert('add a friend first to use this function!')
+            }
+          }}
+          onChange={e => setCompareId(e.target.value)}
+          style={{ width: 'auto', padding: '6px 10px' }}
+        >
+          <option value="">Compare with a friend</option>
+          {friends.map(f => (
+            <option key={f.user_id} value={f.user_id}>{f.display_name}</option>
+          ))}
+        </select>
         {saving && <span style={styles.saving}>Saving…</span>}
       </div>
 
@@ -764,12 +810,42 @@ export default function Timetable() {
               Time conflict: {conflicts.join(', ')} — pick different slots to resolve.
             </div>
           )}
-          <TimetableGrid
-            renderedSlots={renderedSlots}
-            moduleColors={moduleColors}
-            conflicts={conflicts}
-          />
-          {moduleCodes.length === 0 && (
+          {compareId ? (
+            <div style={styles.compareWrap}>
+              <div style={styles.compareCol}>
+                <div style={styles.compareHead}>You</div>
+                <TimetableGrid
+                  renderedSlots={renderedSlots}
+                  moduleColors={moduleColors}
+                  conflicts={conflicts}
+                />
+              </div>
+              <div style={styles.compareCol}>
+                <div style={styles.compareHead}>
+                  <span>{compareFriend?.display_name || 'Friend'}</span>
+                  <button
+                    onClick={() => setCompareId('')}
+                    style={styles.closeCompare}
+                    title="Close comparison"
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+                {friendSlots.length === 0 ? (
+                  <div style={styles.emptyFriend}>No modules for Sem {sem}.</div>
+                ) : (
+                  <TimetableGrid renderedSlots={friendSlots} moduleColors={friendColors} />
+                )}
+              </div>
+            </div>
+          ) : (
+            <TimetableGrid
+              renderedSlots={renderedSlots}
+              moduleColors={moduleColors}
+              conflicts={conflicts}
+            />
+          )}
+          {moduleCodes.length === 0 && !compareId && (
             <p style={styles.hint}>Add modules from the left panel to see them here.</p>
           )}
           {/* colour legend — hidden on screen, shown when printing */}
@@ -824,6 +900,27 @@ const styles = {
     borderRadius: 'var(--radius)', padding: '11px 14px',
     color: '#ffffff', fontSize: 13, fontWeight: 600,
     marginBottom: 12,
+  },
+  compareWrap: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+    gap: 20,
+    alignItems: 'start',
+  },
+  compareCol: { minWidth: 0 },
+  compareHead: {
+    fontWeight: 700, fontSize: 15, color: 'var(--text)', marginBottom: 8,
+    display: 'flex', alignItems: 'center', gap: 8, minHeight: 30,
+  },
+  closeCompare: {
+    marginLeft: 'auto', background: 'transparent', border: '1px solid var(--border)',
+    color: 'var(--text-muted)', borderRadius: 6, padding: '3px 10px',
+    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  },
+  emptyFriend: {
+    border: '1px dashed var(--border)', borderRadius: 8,
+    padding: '40px 20px', textAlign: 'center',
+    color: 'var(--text-muted)', fontSize: 13,
   },
 }
 
