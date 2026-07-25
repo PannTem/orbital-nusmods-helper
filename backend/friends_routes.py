@@ -29,7 +29,9 @@ class FriendAction(BaseModel):
 
 # ── user search ───────────────────────────────────────────────────────────────
 
-@router.get("/users/search")
+# Path is under /friends (not /users) to avoid being shadowed by the
+# GET /users/{user_id} route, which would otherwise match "search" as a user id.
+@router.get("/friends/search")
 def search_users(q: str = Query(..., min_length=1),
                  user_id: Optional[str] = Query(None),
                  conn: psycopg2.extensions.connection = Depends(get_conn)):

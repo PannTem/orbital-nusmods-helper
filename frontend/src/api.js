@@ -127,7 +127,7 @@ export function exportStudyPlan(userId) {
 // ── friends ─────────────────────────────────────────────────────────────────
 
 export const searchUsers = (q, userId) =>
-  get(`/users/search?q=${encodeURIComponent(q)}${userId ? `&user_id=${userId}` : ''}`)
+  get(`/friends/search?q=${encodeURIComponent(q)}${userId ? `&user_id=${userId}` : ''}`)
 export const sendFriendRequest = (requester, recipient) =>
   post('/friends/request', { requester, recipient })
 export const acceptFriendRequest = (userId, otherId) =>
