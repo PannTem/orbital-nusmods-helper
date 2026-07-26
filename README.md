@@ -2,7 +2,7 @@
 
 **Team:** Papangkorn Wangchochedkun & Piyaphat Klanprayoon  
 **Level:** Gemini  
-**Orbital Milestone:** 2  
+**Orbital Milestone:** 3  
 **Period:** 13 May 2026 – 1 July 2026
 
 **Live Demo:** https://orbital-frontend-i7gq.onrender.com
@@ -186,11 +186,10 @@ Add an exam with a list of topics. The backend creates one SM-2 card per topic w
 
 ## Features to Be Implemented
 
-- **Reddit integration:** Pull NUSMods discussion from r/NUSWhispers and r/nus to supplement Disqus comments, improving NLP coverage for modules with few Disqus reviews.
-- **Timetable import/export:** Import a NUSMods share URL to load existing slot selections; export app-built timetables back to a NUSMods-compatible link.
-- **Friends system:** Add connections by display name or invite code. View friends' timetables in read-only mode; filter leaderboards to friends only.
-- **Profile customisation:** Profile picture and a gamified progression system with XP and level badges on the leaderboard.
-- **Timetable comparison:** Side-by-side view of two students' timetables to identify shared free windows for group study.
+Milestone 3 delivered friends, timetable comparison, NUSMods import/export, private study hours, and automated testing.
+
+- **Profile customisation (remaining):** Avatar picker and a gamified XP / level-badge system on the leaderboard. Google profile pictures are already shown on Profile.
+- **Reddit integration (dropped):** Originally planned to supplement Disqus via PRAW. Raw scraping hit rate limits; Reddit app approval for API keys did not return in time. Adviser confirmed dropping Reddit is fine; we continue with Disqus + Gemini.
 
 ---
 
@@ -388,21 +387,79 @@ ACID compliance is provided by PostgreSQL via Supabase. Every write is wrapped i
 
 ## Testing
 
+**Unit Testing**
+
+We unit-test pure logic with pytest (`make test`). SM-2 review intervals and easiness-factor floors are covered in `test_sm2.py`. The timetable generator is covered in `test_timetable.py` with mocked NUSMods fetches. Milestone 3 added tests for NLP helpers, CourseReg scoring, timetable/iCal helpers, module-code validation, and mocked Google auth (`test_nlp.py`, `test_coursereg.py`, `test_timetable_helpers.py`, `test_api_validation.py`, `test_auth.py`). Dev dependencies live in `backend/requirements-dev.txt` so Render’s production install path is unchanged.
+
+**Integration Testing**
+
+Integration-style tests exercise component boundaries: timetable generation with mocked slot APIs, CourseReg analysis on synthetic slots, and auth handlers with FastAPI dependency overrides (no live Google or database).
+
+**System Testing**
+
+Manual system testing was conducted to evaluate the application as a whole, from the frontend interface to backend integration and database integration. These tests simulate real user behavior to ensure that all major user flows work as intended in a live environment.
+
+System testing was carried out using the deployed frontend application (`https://orbital-frontend-i7gq.onrender.com`), with the backend and database services also running in their respective environments (Render + Supabase).
+
+We have the objectives:
+
+- Validate the core features as expected from a user’s perspective
+- Identify bugs that arise from the integration of frontend, backend and database
+- Ensure the UI flows are intuitive and error-tolerant
+- Confirm that API responses and in-app feedback are correct and user-friendly
+
+| Feature | Description | Expected Outcome |
+| :---- | :---- | :---- |
+| Google Login (first-time user) | Sign in with a valid Google account that has not used the app before | User profile is created; redirected to the home page |
+| Google Login (returning user) | Sign in again with the same Google account | Existing user upserted; redirected to the home page |
+| Google Login (failure) | Cancel Google sign-in or fail credential exchange | Status message shown; user remains on `/login` |
+| Access control | Visit `/friends` or `/timetable` while logged out | Redirected to `/login` |
+| Module Analysis | Search a known module on the live app | Scores, summary, and reviews render; invalid codes rejected |
+| Timetable Builder | Add modules, pick slots, auto-generate, share / export | Conflicts blocked; share link and iCal work |
+| NUSMods Import / Export | Paste NUSMods URL / export link | Round-trip succeeds |
+| Friends | Send and accept a friend request | Friendship appears for both users |
+| Timetable Comparison | Compare with a friend | Friend timetable shown for the semester |
+| Study Timer + Leaderboard | Start/stop session; study group | Durations match; private hours respected |
+| CourseReg Advisor | Search a module | Competition bars and round badges render |
+| Study Plan | Add exam, review cards | SM-2 dates update; iCal export works |
+| Module Comparison | Compare two modules | Side-by-side metrics display |
+
+**Automated UI Testing (Playwright)**
+
+Playwright specs under `frontend/tests/` cover login-page rendering, protected-route redirects, and basic authenticated navigation (`npx playwright test`).
+
+**Continuous Integration**
+
+GitHub Actions (`.github/workflows/ci.yml`) runs pytest on every push and pull request using `backend/requirements-dev.txt`. Render continues to deploy from `backend/requirements.txt` / the frontend build only.
+
 **Manual Functional Testing**
 
 All features were verified through manual end-to-end testing by the development team before each milestone submission.
 
 - **Module Analysis:** Searched a range of modules (CS2040S, CS2030S, MA1521, GEA1000, CFG1002) and verified that difficulty scores, recommendation percentages, GPA figures, and AI summaries rendered correctly. Tested edge cases: modules with no Disqus comments (returns zeros), invalid module codes (returns 400), and repeat lookups of cached modules (returns immediately from cache).
 
-- **Timetable Builder:** Added multiple modules, selected conflicting slots (verified they were blocked), ran the auto-generator for 3–4 module combinations, and confirmed the top 5 results were all conflict-free. Exported to iCal and confirmed the file opened correctly in Apple Calendar. Tested the shareable link on a separate browser without login.
+- **Timetable Builder:** Added multiple modules, selected conflicting slots (verified they were blocked), ran the auto-generator for 3–4 module combinations, and confirmed the top 5 results were all conflict-free. Exported to iCal and confirmed the file opened correctly in Apple Calendar. Tested the shareable link on a separate browser without login. Tested NUSMods import/export.
 
-- **Study Timer and Leaderboard:** Started and stopped sessions, refreshed the 7-day chart, and verified session durations matched expected values. Created a study group, joined it from a second browser session using the invite code, and confirmed both users appeared on the group leaderboard.
+- **Study Timer and Leaderboard:** Started and stopped sessions, refreshed the 7-day chart, and verified session durations matched expected values. Created a study group, joined it from a second browser session using the invite code, and confirmed both users appeared on the group leaderboard. Verified private study hours.
 
 - **CourseReg Advisor:** Searched modules with varying slot counts and verified that competition scores and probability badges rendered for all lesson types. Confirmed that platform demand counts updated after making timetable slot selections.
 
 - **Study Plan:** Added an exam with multiple topics, stepped through daily review cards, rated cards at different quality levels, and verified that next review dates updated according to SM-2 intervals (1 day → 6 days → exponential growth). Exported the schedule to iCal and confirmed correct dates.
 
-- **Authentication:** Tested Google sign-in from fresh sessions (no localStorage), sign-in from a session with an existing user (upsert path), and attempted access to protected routes without logging in (verified redirect to `/login`).
+- **Authentication:** Tested Google sign-in from fresh sessions (no localStorage), sign-in from a session with an existing user (upsert path), and attempted access to protected routes without logging in (verified redirect to `/login`). Confirmed cold-start status messaging when Render is waking up.
+
+- **Friends + Timetable Comparison:** Sent/accepted friend requests; compared timetables.
+
+**User Testing**
+
+For Milestone 3, classmates / peers outside the team tried the hosted app and gave feedback.
+
+| Tester | Task attempted | Observation / feedback | Action taken / planned |
+| :---- | :---- | :---- | :---- |
+| Peer 1 | First login after idle period | Long wait with no explanation | Login shows cold-start retry guidance (~30s) |
+| Peer 2 | Build timetable from scratch | Preferred importing an existing NUSMods link | NUSMods import/export on Timetable |
+| Peer 3 | Coordinate with a friend | Wanted both schedules visible | Friend timetable comparison |
+| Peer 4 | Study timer / leaderboard | Preferred hiding hours publicly | Private study hours on Profile |
 
 ---
 
@@ -431,7 +488,7 @@ Backend and frontend development are sequenced so that API endpoints and databas
 3. Algorithms: Backtracking timetable generation, SM-2 spaced repetition
 4. Frontend: React + Vite
 
-**Milestone 2 (current): Minimum Viable Product**
+**Milestone 2: Minimum Viable Product**
 
 1. CourseReg probability analysis
 2. iCal export for timetable and study plan
@@ -444,13 +501,15 @@ Backend and frontend development are sequenced so that API endpoints and databas
 9. Study Plan with SM-2 spaced repetition
 10. Home page dashboard with AY2026/2027 CourseReg countdown
 
-**Milestone 3: Additional Features and Quality of Life**
+**Milestone 3 (current): Additional Features and Quality of Life**
 
-1. Friends/connections system
-2. Timetable import/export (NUSMods URL)
-3. Profile customisation (avatar, XP, level badges)
-4. Reddit API for broader comment corpus
-5. Automated testing
+1. Friends/connections system — done
+2. Timetable comparison with friends — done
+3. Timetable import/export (NUSMods URL) — done
+4. Private study hours — done
+5. Automated testing (pytest, Playwright, CI) — done
+6. Profile customisation (avatar / XP) — deferred
+7. Reddit API — dropped (rate limits / app approval delay; adviser OK)
 
 ---
 

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { GoogleLogin } from '@react-oauth/google'
 import { useNavigate } from 'react-router-dom'
 
@@ -5,8 +6,10 @@ const BASE = import.meta.env.VITE_API_BASE || '/api'
 
 export default function Login() {
   const navigate = useNavigate()
+  const [status, setStatus] = useState('')
 
   async function handleSuccess(credentialResponse) {
+    setStatus('Signing in…')
     try {
       const res = await fetch(`${BASE}/auth/google`, {
         method: 'POST',
@@ -18,7 +21,7 @@ export default function Login() {
       localStorage.setItem('user', JSON.stringify(user))
       navigate('/')
     } catch (e) {
-      console.error(e)
+      setStatus('Server is starting up — please try signing in again in 30 seconds.')
     }
   }
 
@@ -29,8 +32,9 @@ export default function Login() {
         <p style={styles.subtitle}>Sign in to continue</p>
         <GoogleLogin
           onSuccess={handleSuccess}
-          onError={() => console.error('Login failed')}
+          onError={() => setStatus('Google sign-in failed. Please try again.')}
         />
+        {status && <p style={styles.status}>{status}</p>}
       </div>
     </div>
   )
@@ -57,4 +61,5 @@ const styles = {
   title: { color: 'white', fontSize: 28, fontWeight: 700, margin: 0 },
   accent: { color: '#60a5fa' },
   subtitle: { color: '#94a3b8', margin: 0, fontSize: 15 },
+  status: { color: '#f59e0b', fontSize: 13, textAlign: 'center', margin: 0, maxWidth: 260 },
 }
