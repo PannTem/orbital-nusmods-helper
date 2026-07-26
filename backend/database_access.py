@@ -46,7 +46,8 @@ def init_db():
             email TEXT,
             picture TEXT,
             review_streak INTEGER DEFAULT 0,
-            last_review_date TEXT
+            last_review_date TEXT,
+            hours_private BOOLEAN DEFAULT FALSE
         )
     """)
 
@@ -243,12 +244,14 @@ def get_user(user_id: str, conn: psycopg2.extensions.connection):
 
 
 def update_user(user_id: str, display_name: str, faculty: str,
-                year_of_study: int, course: str, conn: psycopg2.extensions.connection):
+                year_of_study: int, course: str, hours_private: bool,
+                conn: psycopg2.extensions.connection):
     cur = conn.cursor()
     cur.execute("""
-        UPDATE users SET display_name=%s, faculty=%s, year_of_study=%s, course=%s
+        UPDATE users SET display_name=%s, faculty=%s, year_of_study=%s, course=%s,
+                         hours_private=%s
         WHERE user_id=%s
-    """, (display_name, faculty, year_of_study, course, user_id))
+    """, (display_name, faculty, year_of_study, course, hours_private, user_id))
     conn.commit()
 
 
@@ -326,7 +329,8 @@ def get_user_timer_stats(user_id, conn):
 
 
 def get_leaderboard(faculty, year_of_study, course, conn, limit=10):
-    conditions = []
+    #Exclude users who privated their study hours
+    conditions = ["u.hours_private IS NOT TRUE"]
     params: list = []
     if faculty:
         conditions.append("u.faculty = %s")
@@ -415,7 +419,7 @@ def get_group_leaderboard(group_id, conn):
           ON u.user_id=s.user_id
           AND DATE(s.start_time) >= CURRENT_DATE - INTERVAL '6 days'
           AND s.duration_seconds IS NOT NULL
-        WHERE m.group_id=%s
+        WHERE m.group_id=%s AND u.hours_private IS NOT TRUE
         GROUP BY u.user_id
         ORDER BY week_seconds DESC
     """, (group_id,))
@@ -627,7 +631,9 @@ def get_friends(user_id: str, conn: psycopg2.extensions.connection):
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT u.user_id, u.display_name, u.picture, u.faculty, u.year_of_study, u.course,
-               COALESCE(SUM(s.duration_seconds), 0) AS week_seconds
+               u.hours_private,
+               CASE WHEN u.hours_private IS TRUE THEN NULL
+                    ELSE COALESCE(SUM(s.duration_seconds), 0) END AS week_seconds
         FROM friends f
         JOIN users u
           ON u.user_id = CASE WHEN f.user_id=%s THEN f.friend_id ELSE f.user_id END

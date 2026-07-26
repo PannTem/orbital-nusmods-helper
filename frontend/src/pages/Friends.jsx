@@ -150,7 +150,7 @@ export default function Friends() {
                 <Avatar src={u.picture} name={u.display_name} />
                 <div style={styles.rowInfo}>
                   <div style={styles.name}>{u.display_name}</div>
-                  <div style={styles.sub}>{formatStudy(u.week_seconds)}</div>
+                  <div style={styles.sub}>{u.hours_private ? 'Hours hidden' : formatStudy(u.week_seconds)}</div>
                 </div>
                 <button className="btn-ghost" onClick={() => handleRemove(u.user_id)}>Remove</button>
               </div>
