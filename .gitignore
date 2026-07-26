@@ -28,3 +28,9 @@ ms2instruction.md
 # Node (for future frontend)
 node_modules/
 .next/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
