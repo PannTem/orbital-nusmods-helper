@@ -34,6 +34,7 @@ class UpdateUserRequest(BaseModel):
     faculty: Optional[str] = None
     year_of_study: Optional[int] = None
     course: Optional[str] = None
+    hours_private: Optional[bool] = None
 
 
 class StartSessionRequest(BaseModel):
@@ -83,6 +84,8 @@ def update_user(user_id: str, body: UpdateUserRequest,
         body.faculty or user["faculty"],
         body.year_of_study or user["year_of_study"],
         body.course or user["course"],
+        # explicit None check: False is a valid value we must not overwrite
+        body.hours_private if body.hours_private is not None else user.get("hours_private", False),
         conn,
     )
     return {"ok": True}

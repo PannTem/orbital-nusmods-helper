@@ -17,6 +17,7 @@ export default function Profile() {
   const [faculty, setFaculty]         = useState(user.faculty || '')
   const [year, setYear]               = useState(user.year_of_study || '')
   const [course, setCourse]           = useState(user.course || '')
+  const [hoursPrivate, setHoursPrivate] = useState(user.hours_private || false)
   const [saving, setSaving]           = useState(false)
   const [saved, setSaved]             = useState(false)
   const [error, setError]             = useState('')
@@ -31,9 +32,10 @@ export default function Profile() {
         faculty,
         year_of_study: year ? parseInt(year) : null,
         course,
+        hours_private: hoursPrivate,
       })
       // Update localStorage with new display name
-      const updated = { ...user, display_name: displayName, faculty, year_of_study: year, course }
+      const updated = { ...user, display_name: displayName, faculty, year_of_study: year, course, hours_private: hoursPrivate }
       localStorage.setItem('user', JSON.stringify(updated))
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -91,6 +93,19 @@ export default function Profile() {
               placeholder="e.g. Computer Science"
             />
           </div>
+
+          <label style={styles.toggleRow}>
+            <input
+              type="checkbox"
+              checked={hoursPrivate}
+              onChange={e => setHoursPrivate(e.target.checked)}
+              style={{ width: 'auto', cursor: 'pointer' }}
+            />
+            <span>
+              <span style={styles.toggleLabel}>Keep my study hours private</span>
+              <span style={styles.toggleHint}>Hides your weekly hours from leaderboards and friends.</span>
+            </span>
+          </label>
 
           {error && <div style={styles.error}>{error}</div>}
 
@@ -164,5 +179,23 @@ const styles = {
   error: {
     color: '#ef4444',
     fontSize: 13,
+  },
+  toggleRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+    cursor: 'pointer',
+  },
+  toggleLabel: {
+    display: 'block',
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  toggleHint: {
+    display: 'block',
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 2,
   },
 }
