@@ -1,6 +1,7 @@
 name: CI
 
-#Run on every push and pull request
+# Run on every push and pull request.
+# Render deploy is separate and still uses backend/requirements.txt only.
 on:
   push:
   pull_request:
@@ -18,8 +19,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install test dependencies
-        run: pip install pytest requests python-dotenv
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
 
-      - name: Run tests
+      - name: Run unit tests
         working-directory: backend
         run: python -m pytest -v
