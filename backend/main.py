@@ -18,6 +18,7 @@ import studyplan_routes
 import coursereg_routes
 import auth_routes
 import friends_routes
+import achievements_routes
 
 database_access.init_db()
 
@@ -40,6 +41,7 @@ app.include_router(studyplan_routes.router)
 app.include_router(coursereg_routes.router)
 app.include_router(auth_routes.router)
 app.include_router(friends_routes.router)
+app.include_router(achievements_routes.router)
 
 
 MODULE_CODE_RE = re.compile(r'^[A-Z]{2,3}\d{4}[A-Z]{0,2}$')

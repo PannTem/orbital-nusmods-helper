@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { logout } from './helpers.js'
 
-// Authentication / access-control behaviour. Read-only: never writes data.
 
 test('login page renders its sign-in prompt', async ({ page }) => {
   await page.goto('/login')
@@ -9,7 +8,7 @@ test('login page renders its sign-in prompt', async ({ page }) => {
 })
 
 test('a protected route redirects to /login when logged out', async ({ page }) => {
-  await logout(page)               // ensure no session
+  await logout(page)              
   await page.goto('/friends')
   await expect(page).toHaveURL(/\/login/)
 })
