@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getUserId } from '../App.jsx'
-import { updateUser } from '../api.js'
+import { updateUser, syncAchievements, getAchievements } from '../api.js'
 
 const FACULTIES = [
   'Computing', 'Engineering', 'Science', 'Arts & Social Sciences',
@@ -21,6 +21,17 @@ export default function Profile() {
   const [saving, setSaving]           = useState(false)
   const [saved, setSaved]             = useState(false)
   const [error, setError]             = useState('')
+  const [achievements, setAchievements] = useState([])
+
+  // On every profile visit: award any newly-earned achievements, then load them.
+  useEffect(() => {
+    if (!userId) return
+    syncAchievements(userId)
+      .catch(() => {})                     // sync failure shouldn't block display
+      .then(() => getAchievements(userId))
+      .then(d => setAchievements(d.achievements || []))
+      .catch(() => {})
+  }, [userId])
 
   async function handleSave(e) {
     e.preventDefault()
@@ -113,6 +124,29 @@ export default function Profile() {
             {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Changes'}
           </button>
         </form>
+
+        {achievements.length > 0 && (
+          <div style={styles.achievements}>
+            <div style={styles.achTitle}>
+              Achievements ({achievements.filter(a => a.earned).length}/{achievements.length})
+            </div>
+            <div style={styles.achGrid}>
+              {achievements.map(a => (
+                <div
+                  key={a.id}
+                  title={a.description}
+                  style={{ ...styles.badge, ...(a.earned ? styles.badgeEarned : styles.badgeLocked) }}
+                >
+                  <div style={{ ...styles.badgeIcon, color: a.earned ? undefined : '#475569' }}>
+                    {a.earned ? a.icon : '☆'}
+                  </div>
+                  <div style={styles.badgeName}>{a.name}</div>
+                  <div style={styles.badgeDesc}>{a.description}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -196,6 +230,50 @@ const styles = {
     display: 'block',
     color: '#94a3b8',
     fontSize: 12,
+    marginTop: 2,
+  },
+  achievements: {
+    borderTop: '1px solid #334155',
+    paddingTop: 20,
+  },
+  achTitle: {
+    color: 'white',
+    fontWeight: 600,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  achGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+    gap: 10,
+  },
+  badge: {
+    borderRadius: 8,
+    padding: 12,
+    textAlign: 'center',
+  },
+  badgeEarned: {
+    background: '#0f2942',
+    border: '1px solid #2563eb',
+  },
+  badgeLocked: {
+    background: '#1a2332',
+    border: '1px solid #334155',
+    opacity: 0.55,
+  },
+  badgeIcon: {
+    fontSize: 22,
+    marginBottom: 4,
+    lineHeight: 1,
+  },
+  badgeName: {
+    color: 'white',
+    fontWeight: 600,
+    fontSize: 13,
+  },
+  badgeDesc: {
+    color: '#94a3b8',
+    fontSize: 11,
     marginTop: 2,
   },
 }

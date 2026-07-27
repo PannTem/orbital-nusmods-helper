@@ -131,6 +131,16 @@ def init_db():
         )
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_achievements (
+            user_id TEXT NOT NULL,
+            achievement_id TEXT NOT NULL,
+            unlocked_at TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY (user_id, achievement_id),
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
+
     conn.commit()
     cur.close()
     conn.close()
@@ -670,3 +680,66 @@ def get_outgoing_requests(user_id: str, conn: psycopg2.extensions.connection):
         WHERE f.user_id=%s AND f.status='pending'
     """, (user_id,))
     return [dict(r) for r in cur.fetchall()]
+
+
+# ── achievements ────────────────────────────────────────────────────────────
+
+def get_achievement_stats(user_id: str, conn: psycopg2.extensions.connection):
+    """Raw numbers the achievement rules check against, as one dict."""
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT COALESCE(SUM(duration_seconds), 0)
+        FROM study_sessions
+        WHERE user_id=%s AND duration_seconds IS NOT NULL
+    """, (user_id,))
+    total_seconds = cur.fetchone()[0]
+
+    cur.execute("SELECT COALESCE(review_streak, 0) FROM users WHERE user_id=%s", (user_id,))
+    row = cur.fetchone()
+    streak = row[0] if row else 0
+
+    cur.execute("""
+        SELECT COUNT(*) FROM friends
+        WHERE (user_id=%s OR friend_id=%s) AND status='accepted'
+    """, (user_id, user_id))
+    friend_count = cur.fetchone()[0]
+
+    cur.execute("SELECT EXISTS(SELECT 1 FROM timetable_slots WHERE user_id=%s)", (user_id,))
+    has_timetable = cur.fetchone()[0]
+
+    cur.execute("SELECT EXISTS(SELECT 1 FROM study_cards WHERE user_id=%s)", (user_id,))
+    has_study_plan = cur.fetchone()[0]
+
+    return {
+        "total_seconds": total_seconds,
+        "streak": streak,
+        "friend_count": friend_count,
+        "has_timetable": has_timetable,
+        "has_study_plan": has_study_plan,
+    }
+
+
+def get_unlocked_achievements(user_id: str, conn: psycopg2.extensions.connection):
+    """Return {achievement_id: unlocked_at_iso} for this user."""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT achievement_id, unlocked_at FROM user_achievements WHERE user_id=%s",
+        (user_id,),
+    )
+    return {
+        r["achievement_id"]: (r["unlocked_at"].isoformat() if r["unlocked_at"] else None)
+        for r in cur.fetchall()
+    }
+
+
+def award_achievement(user_id: str, achievement_id: str,
+                      conn: psycopg2.extensions.connection):
+    """Record an unlocked achievement. Idempotent — safe to call repeatedly."""
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO user_achievements (user_id, achievement_id)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id, achievement_id) DO NOTHING
+    """, (user_id, achievement_id))
+    conn.commit()

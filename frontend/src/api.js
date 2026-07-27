@@ -135,3 +135,8 @@ export const acceptFriendRequest = (userId, otherId) =>
 export const removeFriend = (userId, otherId) =>
   del(`/friends/${userId}/${otherId}`)
 export const getFriends = (userId) => get(`/friends/${userId}`)
+
+// ── achievements ──────────────────────────────────────────────────────────────
+
+export const syncAchievements = (userId) => post(`/achievements/${userId}/sync`, {})
+export const getAchievements  = (userId) => get(`/achievements/${userId}`)
